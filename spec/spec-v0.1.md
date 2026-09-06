@@ -248,6 +248,16 @@ The embedded `public_key` proves internal consistency only; **authenticity requi
 | **observed** | Read from a system of record (EDR / MDM / IdP / backup / SIEM) and captured as a frozen, hashed source — *not* re-scored or cross-source-deduped. |
 | **declared** | Human attestation (e.g. a four-eyes control attestation). |
 
+> **On "not re-scored" (v0.1 clarification).** `evidence_class` grades the provenance of the
+> *evidence*, not the verdict rule. "Not re-scored" means the producer does not re-derive or mutate
+> the observed values — they are frozen and hashed exactly as read from the system of record. A
+> control MAY still apply a **published, deterministic threshold** to that frozen observed evidence to
+> reach its verdict (e.g. "privileged accounts without smartcard-required auth > 0 → at-risk")
+> without downgrading the `observed` grade. What *would* break the grade is changing the observed
+> numbers, cross-source deduplication, or re-deriving them. `basis` (how the verdict was reached —
+> automated / attested / manual) stays orthogonal to `evidence_class` (the provenance grade of the
+> evidence behind the verdict).
+
 ### 7.1 Placement
 
 `evidence_class` is a per-control member of each control result ([§3.2](#32-control-result)), adjacent to `not_applicable`. It is content-hashed and signed like every other field.
