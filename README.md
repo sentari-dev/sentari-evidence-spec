@@ -15,9 +15,15 @@ at all**:
    grading (derived / observed / declared).
 2. **[`verifier/`](verifier/)** — a single-file, dependency-light **reference offline
    verifier** (Python + `cryptography`). It re-derives every hash and checks every
-   signature independently of the server. Anyone can reimplement it in any language; the
-   point of the spec is that the format is open and the proof is checkable by whoever
-   needs it.
+   signature independently of the server.
+3. **[`verifier-go/`](verifier-go/)** — a **second, independent** verifier in Go (standard
+   library only, a single static binary — ideal for an air-gapped auditor). It agrees with
+   the Python verifier *byte-for-byte* on the same golden vector. Two independent
+   implementations agreeing is the strongest proof the format is genuinely open and not
+   vendor-locked — anyone can reimplement it in any language.
+
+New to this? **[`AUDITOR_GUIDE.md`](AUDITOR_GUIDE.md)** is a one-page "verify it yourself"
+guide for auditors and conformity-assessment bodies.
 
 ## Why publish this
 
