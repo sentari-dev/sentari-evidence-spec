@@ -32,15 +32,23 @@ Verdict is one of: ``verified`` | ``tampered`` | ``key_unknown`` (never a bare b
   * verified     — payload + signature verify and (if an anchor was supplied) the
                    key matches it.
 
-Usage:
-    sentari_evidence_verify.py PACK [--pubkey B64] [--expected-key-id ID] [--json]
+The same tool also verifies Sentari's signed **exportable artifacts** — SBOM
+(CycloneDX/SPDX) and VEX (OpenVEX/CycloneDX) downloads (spec §12). These are a
+wrapper ``{"document": <doc>, "signature": <block>}`` whose block ``context`` is
+``sentari-sbom/v1`` / ``sentari-vex/v1``. For them the document is hashed AS-IS
+(no blank-and-rehash), the signed envelope is 2-key ``{content_sha256, ctx}``,
+and Layer 2/3 are reported **N/A**. The SAME published ``key_id`` verifies packs,
+SBOMs and VEX alike.
 
-PACK is either:
-  * a .json file with {"payload":..., "signature":..., "frozen_inputs":...}, or
-    the flat server-download form (payload fields at top level + sibling blocks), or
-  * a .zip artifact containing manifest.json + evidence.json + signature.json
-    (+ frozen_inputs.json), or
-  * a directory containing those files.
+Usage:
+    sentari_evidence_verify.py ARTIFACT [--pubkey B64] [--expected-key-id ID] [--json]
+
+ARTIFACT is either:
+  * an evidence pack — a .json file with {"payload":..., "signature":...,
+    "frozen_inputs":...}, or the flat server-download form (payload fields at top
+    level + sibling blocks), or a .zip / directory containing manifest.json +
+    evidence.json + signature.json (+ frozen_inputs.json), or
+  * a signed SBOM/VEX — a .json wrapper {"document":..., "signature":...}.
 
 Exit code: 0 = verified, 2 = tampered, 3 = key_unknown, 4 = usage/parse error.
 """
@@ -69,6 +77,18 @@ except ImportError:  # pragma: no cover - dependency hint
 
 SIGNING_CONTEXT = "sentari-evidence-pack/v1"
 SIGNING_ALGORITHM = "ed25519"
+
+# Signed *exportable artifacts* (SBOM / VEX) — spec §12. Unlike an evidence pack
+# these are standard-schema documents (CycloneDX / SPDX / OpenVEX) we MUST NOT
+# mutate, so the signature is detached and the hash is over the document AS-IS
+# (no blank-and-rehash), the signed envelope is 2-key ``{content_sha256, ctx}``
+# (no frozen_inputs_sha256), and Layer 2/3 do not exist. The context is
+# domain-separated per artifact type so a signature can never cross-verify as a
+# different artifact — even though the SAME evidence key (one published key_id)
+# signs packs, SBOMs and VEX alike.
+SBOM_CONTEXT = "sentari-sbom/v1"
+VEX_CONTEXT = "sentari-vex/v1"
+ARTIFACT_CONTEXTS = {SBOM_CONTEXT: "SBOM", VEX_CONTEXT: "VEX"}
 
 
 # --------------------------------------------------------------------------- #
@@ -227,6 +247,30 @@ def verify_signature(
         return False
 
 
+def verify_document_signature(
+    content_sha256: str,
+    ctx: str,
+    signature_b64: str,
+    pubkey_raw: bytes,
+) -> bool:
+    """Spec §12: Ed25519 over canonical_json of the 2-key ``{content_sha256, ctx}``
+    envelope — deliberately NOT the pack's 3-key ``{content_sha256, ctx,
+    frozen_inputs_sha256}`` (a signed SBOM/VEX is the artifact itself, not derived
+    from frozen inputs; reusing the 3-key envelope with ``frozen=""`` would sign a
+    different object that never matches the 2-key signed bytes)."""
+    sig_raw = _decode_b64(signature_b64)
+    if sig_raw is None:
+        return False
+    inner = {"content_sha256": content_sha256, "ctx": ctx}
+    try:
+        Ed25519PublicKey.from_public_bytes(pubkey_raw).verify(
+            sig_raw, canonical_json(inner)
+        )
+        return True
+    except (InvalidSignature, ValueError):
+        return False
+
+
 def verify_manifest(
     manifest_envelope: dict,
     members_raw: dict[str, bytes],
@@ -350,6 +394,18 @@ def _load_artifact(
     doc = json.loads(path.read_text())
     if "payload" in doc and "signature" in doc:
         return doc["payload"], doc["signature"], doc.get("frozen_inputs"), None
+    # Signed exportable artifact (SBOM / VEX), spec §12: a wrapper
+    #   {"document": <cyclonedx/spdx/openvex doc>, "signature": <detached block>}.
+    # Recognize the top-level "document" key BEFORE the flat-pack fallback below —
+    # otherwise the flat path would treat the whole wrapper as a pack payload of
+    # {"document": …} and blank-and-rehash it (false tampered). The document is
+    # returned unchanged as the first tuple element; verify_pack dispatches to the
+    # document path on the block's artifact ``context``.
+    if "document" in doc:
+        sig = doc.get("signature")
+        if not isinstance(sig, dict):
+            raise KeyError("artifact has a 'document' but no 'signature' block")
+        return doc["document"], sig, None, None
     sig = doc.get("signature")
     if sig is None:
         raise KeyError("no 'signature' block found in artifact")
@@ -361,6 +417,117 @@ def _load_artifact(
 # --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
+def _verify_document(
+    document: dict,
+    signature: dict,
+    *,
+    pubkey_b64: str | None = None,
+    expected_key_id: str | None = None,
+) -> Result:
+    """Verify a signed exportable artifact (SBOM/VEX) — spec §12, the five
+    document-path obligations of the design §4.
+
+    Distinct from the pack path in exactly the ways a standard-schema document
+    demands:
+      1. hashes the document AS-IS — NOT ``recompute_content_hash`` (which would
+         inject a ``content_sha256`` key the document never carried → false hash);
+      2. compares the block's ``content_sha256`` to that recomputed document hash
+         (the document embeds no ``content_sha256`` to read);
+      3. verifies the 2-key ``{content_sha256, ctx}`` envelope (not the 3-key one);
+      5. reports Layer 2/3 as **N/A** — this artifact class has neither.
+    (Obligation 4 — the loader wrapper branch + unknown-ctx rejection — lives in
+    ``_load_artifact`` / the ``verify_pack`` dispatch.)
+    """
+    r = Result()
+    ctx = signature.get("context")
+    artifact_name = ARTIFACT_CONTEXTS[ctx]
+    r.notes.append(f"signed {artifact_name} artifact (context {ctx})")
+
+    # Layer 1 — hash the document AS-IS (obligation 1). NO blank-and-rehash.
+    recomputed = _sha256_hex(canonical_json(document))
+    # Obligation 2 — compare against the block's content_sha256, not a
+    # (non-existent) document field.
+    block_content = signature.get("content_sha256", "")
+    r.payload_intact = bool(block_content) and block_content == recomputed
+    if not r.payload_intact:
+        r.notes.append(
+            f"content_sha256 mismatch: block={str(block_content)[:12]}… "
+            f"recomputed={recomputed[:12]}…"
+        )
+
+    # Detached-block metadata consistency. The context is already a known artifact
+    # ctx (we only get here by dispatch); the content_sha256 agreement is Layer 1
+    # above, so only the algorithm remains to cross-check.
+    field_notes: list[str] = []
+    algo = signature.get("algorithm")
+    if algo is not None and algo != SIGNING_ALGORITHM:
+        field_notes.append(
+            f"signature.algorithm={algo!r} (expected {SIGNING_ALGORITHM!r})"
+        )
+    r.sig_fields_consistent = not field_notes
+    r.notes.extend(field_notes)
+
+    # Layers 2 & 3 do not exist for this artifact class (obligation 5): report
+    # **N/A**, a deliberately distinct word from the pack's "skipped" so an auditor
+    # never conflates "this class has no Layer 2" with "could have checked, didn't."
+    r.frozen_inputs_valid = None
+    r.manifest_valid = None
+    r.notes.append(
+        f"Layer 2 (frozen inputs) N/A — a signed {artifact_name} is the artifact "
+        "itself, not derived from frozen inputs (spec §12)"
+    )
+    r.notes.append(
+        f"Layer 3 (collector re-derivation) N/A — no collector for a signed "
+        f"{artifact_name} (spec §12)"
+    )
+
+    # Key resolution — identical policy to the pack path: --pubkey wins, else the
+    # block's embedded public_key.
+    raw_b64 = pubkey_b64 or signature.get("public_key")
+    if not raw_b64:
+        r.signature_valid = None
+        r.notes.append(
+            "no public key available (not embedded, none supplied) — signature unchecked"
+        )
+        return r
+    pubkey_raw = _decode_b64(raw_b64)
+    if pubkey_raw is None:
+        r.signature_valid = None
+        r.notes.append(
+            "public key is not valid base64 — signature unchecked (supply a valid --pubkey)"
+        )
+        return r
+
+    computed_kid = key_id_for(pubkey_raw)
+    r.key_id_matches_material = computed_kid == signature.get("key_id")
+    if not r.key_id_matches_material:
+        r.notes.append(
+            f"key_id != fingerprint(public_key): {signature.get('key_id')} vs {computed_kid}"
+        )
+    if expected_key_id is not None:
+        r.key_id_matches_anchor = computed_kid == expected_key_id
+        if not r.key_id_matches_anchor:
+            r.notes.append(
+                f"key_id != out-of-band anchor: {computed_kid} vs {expected_key_id} "
+                "— authenticity NOT established (rotated / foreign / wrong key)"
+            )
+    else:
+        r.notes.append(
+            "no out-of-band key_id anchor supplied — authenticity NOT established, only "
+            "internal consistency (pass --expected-key-id for a real trust decision)"
+        )
+
+    # Signature — Ed25519 over the 2-key envelope (obligation 3). The signed hash
+    # is the block's content_sha256 (Layer 1 already proved it equals the document
+    # hash when intact); a tampered document fails Layer 1 regardless.
+    r.signature_valid = verify_document_signature(
+        block_content, ctx, signature.get("value", ""), pubkey_raw
+    )
+    if not r.signature_valid:
+        r.notes.append("Ed25519 signature verification failed")
+    return r
+
+
 def verify_pack(
     payload: dict,
     signature: dict,
@@ -370,6 +537,22 @@ def verify_pack(
     pubkey_b64: str | None = None,
     expected_key_id: str | None = None,
 ) -> Result:
+    # Dispatch on the detached block's context (spec §12). A signed exportable
+    # artifact (SBOM/VEX) takes the document path — hash the document AS-IS, verify
+    # the 2-key envelope, report Layer 2/3 as N/A. Everything else (the pack ctx, a
+    # missing ctx, or an UNKNOWN ctx) takes the pack path below, where an
+    # unrecognised context is caught as ``tampered`` by the sig-fields check (and a
+    # relabelled document, lacking a content_sha256 field, additionally fails
+    # Layer 1) — an unknown format is never silently accepted.
+    block_ctx = signature.get("context") if isinstance(signature, dict) else None
+    if block_ctx in ARTIFACT_CONTEXTS:
+        return _verify_document(
+            payload,
+            signature,
+            pubkey_b64=pubkey_b64,
+            expected_key_id=expected_key_id,
+        )
+
     r = Result()
 
     # Layer 1 — payload intact
@@ -472,9 +655,13 @@ _EXIT = {"verified": 0, "tampered": 2, "key_unknown": 3}
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="Verify a Sentari evidence pack offline (spec v0.1)."
+        description="Verify a Sentari evidence pack or signed SBOM/VEX offline (spec v0.1)."
     )
-    ap.add_argument("pack", type=Path, help="pack .json / .zip / directory")
+    ap.add_argument(
+        "pack",
+        type=Path,
+        help="evidence pack (.json / .zip / directory) OR signed SBOM/VEX (.json wrapper)",
+    )
     ap.add_argument(
         "--pubkey", help="base64 raw 32-byte Ed25519 public key (overrides embedded)"
     )

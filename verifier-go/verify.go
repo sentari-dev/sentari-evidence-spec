@@ -39,7 +39,28 @@ import (
 const (
 	signingContext   = "sentari-evidence-pack/v1"
 	signingAlgorithm = "ed25519"
+
+	// Signed exportable artifacts (SBOM / VEX) — spec §12. A wrapper
+	// {"document": <doc>, "signature": <block>} whose block context is one of
+	// these. The document is hashed AS-IS (no blank-and-rehash), the signed
+	// envelope is 2-key {content_sha256, ctx} (no frozen_inputs_sha256), and
+	// Layer 2/3 do not exist. The SAME evidence key (one key_id) signs packs,
+	// SBOMs and VEX; the domain-separated ctx is what makes sharing it safe.
+	sbomContext = "sentari-sbom/v1"
+	vexContext  = "sentari-vex/v1"
 )
+
+// artifactName maps a known artifact context to its display name; ok is false for
+// the pack ctx, a missing ctx, or an unknown ctx (all of which take the pack path).
+func artifactName(ctx string) (string, bool) {
+	switch ctx {
+	case sbomContext:
+		return "SBOM", true
+	case vexContext:
+		return "VEX", true
+	}
+	return "", false
+}
 
 // --------------------------------------------------------------------------- //
 // Hashing / encoding primitives (spec §5, §6)
@@ -312,6 +333,118 @@ type ManifestCtx struct {
 	Members  map[string][]byte
 }
 
+// verifyDocumentSignature implements spec §12: Ed25519 over the canonical JSON of
+// the 2-key {content_sha256, ctx} envelope — deliberately NOT the pack's 3-key
+// {content_sha256, ctx, frozen_inputs_sha256} (a signed SBOM/VEX is the artifact
+// itself, not derived from frozen inputs).
+func verifyDocumentSignature(contentSha, ctx, sigB64 string, pubkeyRaw []byte) bool {
+	sigRaw, ok := decodeB64(sigB64)
+	if !ok {
+		return false
+	}
+	if len(pubkeyRaw) != ed25519.PublicKeySize {
+		return false
+	}
+	inner := map[string]interface{}{"content_sha256": contentSha, "ctx": ctx}
+	return ed25519.Verify(ed25519.PublicKey(pubkeyRaw), canonicalJSON(inner), sigRaw)
+}
+
+// verifyDocument is the document path for signed exportable artifacts (SBOM/VEX)
+// — spec §12, the five obligations of the design §4. It mirrors the Python
+// _verify_document exactly:
+//  1. hashes the document AS-IS (NOT recomputeContentHash — which would inject a
+//     content_sha256 key the document never carried → false hash);
+//  2. compares the block's content_sha256 to that recomputed document hash;
+//  3. verifies the 2-key {content_sha256, ctx} envelope (not the 3-key one);
+//  5. reports Layer 2/3 as N/A — this artifact class has neither.
+func verifyDocument(
+	document map[string]interface{},
+	signature map[string]interface{},
+	pubkeyB64 *string,
+	expectedKeyID *string,
+) *Result {
+	r := newResult()
+	ctxS, _ := getStr(signature, "context")
+	name, _ := artifactName(ctxS)
+	r.Notes = append(r.Notes, fmt.Sprintf("signed %s artifact (context %s)", name, ctxS))
+
+	// Layer 1 — hash the document AS-IS (obligation 1). NO blank-and-rehash.
+	recomputed := sha256Hex(canonicalJSON(document))
+	// Obligation 2 — compare against the block's content_sha256, not a
+	// (non-existent) document field.
+	blockContent, _ := getStr(signature, "content_sha256")
+	r.PayloadIntact = boolPtr(blockContent != "" && blockContent == recomputed)
+	if !isTrue(r.PayloadIntact) {
+		r.Notes = append(r.Notes, fmt.Sprintf(
+			"content_sha256 mismatch: block=%s… recomputed=%s…", head(blockContent), head(recomputed)))
+	}
+
+	// Detached-block metadata consistency. The context is already a known artifact
+	// ctx (we only get here by dispatch); the content_sha256 agreement is Layer 1
+	// above, so only the algorithm remains to cross-check.
+	var fieldNotes []string
+	if algo, present := signature["algorithm"]; present && algo != nil && algo != interface{}(signingAlgorithm) {
+		fieldNotes = append(fieldNotes, fmt.Sprintf("signature.algorithm=%v (expected %q)", algo, signingAlgorithm))
+	}
+	r.SigFieldsConsistent = boolPtr(len(fieldNotes) == 0)
+	r.Notes = append(r.Notes, fieldNotes...)
+
+	// Layers 2 & 3 do not exist for this artifact class (obligation 5): report
+	// N/A, a deliberately distinct word from the pack's "skipped".
+	r.FrozenInputsValid = nil
+	r.ManifestValid = nil
+	r.Notes = append(r.Notes, fmt.Sprintf(
+		"Layer 2 (frozen inputs) N/A — a signed %s is the artifact itself, not derived from frozen inputs (spec §12)", name))
+	r.Notes = append(r.Notes, fmt.Sprintf(
+		"Layer 3 (collector re-derivation) N/A — no collector for a signed %s (spec §12)", name))
+
+	// Key resolution — identical policy to the pack path.
+	rawB64 := ""
+	if pubkeyB64 != nil && *pubkeyB64 != "" {
+		rawB64 = *pubkeyB64
+	} else if embedded, ok := getStr(signature, "public_key"); ok {
+		rawB64 = embedded
+	}
+	if rawB64 == "" {
+		r.SignatureValid = nil
+		r.Notes = append(r.Notes, "no public key available (not embedded, none supplied) — signature unchecked")
+		return r
+	}
+	pubkeyRaw, ok := decodeB64(rawB64)
+	if !ok {
+		r.SignatureValid = nil
+		r.Notes = append(r.Notes, "public key is not valid base64 — signature unchecked (supply a valid --pubkey)")
+		return r
+	}
+
+	computedKID := keyIDFor(pubkeyRaw)
+	blockKID, _ := getStr(signature, "key_id")
+	r.KeyIDMatchesMaterial = boolPtr(computedKID == blockKID)
+	if !isTrue(r.KeyIDMatchesMaterial) {
+		r.Notes = append(r.Notes, fmt.Sprintf("key_id != fingerprint(public_key): %s vs %s", blockKID, computedKID))
+	}
+	if expectedKeyID != nil {
+		r.KeyIDMatchesAnchor = boolPtr(computedKID == *expectedKeyID)
+		if !isTrue(r.KeyIDMatchesAnchor) {
+			r.Notes = append(r.Notes, fmt.Sprintf(
+				"key_id != out-of-band anchor: %s vs %s — authenticity NOT established (rotated / foreign / wrong key)",
+				computedKID, *expectedKeyID))
+		}
+	} else {
+		r.Notes = append(r.Notes, "no out-of-band key_id anchor supplied — authenticity NOT established, only "+
+			"internal consistency (pass --expected-key-id for a real trust decision)")
+	}
+
+	// Signature — Ed25519 over the 2-key envelope (obligation 3). The signed hash
+	// is the block's content_sha256; a tampered document fails Layer 1 regardless.
+	sigValue, _ := getStr(signature, "value")
+	r.SignatureValid = boolPtr(verifyDocumentSignature(blockContent, ctxS, sigValue, pubkeyRaw))
+	if !isTrue(r.SignatureValid) {
+		r.Notes = append(r.Notes, "Ed25519 signature verification failed")
+	}
+	return r
+}
+
 func verifyPack(
 	payload map[string]interface{},
 	signature map[string]interface{},
@@ -320,6 +453,19 @@ func verifyPack(
 	pubkeyB64 *string,
 	expectedKeyID *string,
 ) *Result {
+	// Dispatch on the detached block's context (spec §12). A signed exportable
+	// artifact (SBOM/VEX) takes the document path — hash the document AS-IS, verify
+	// the 2-key envelope, report Layer 2/3 as N/A. Everything else (the pack ctx, a
+	// missing ctx, or an UNKNOWN ctx) takes the pack path below, where an
+	// unrecognised context is caught as tampered by the sig-fields check (and a
+	// relabelled document, lacking a content_sha256 field, additionally fails
+	// Layer 1) — an unknown format is never silently accepted.
+	if ctxS, ok := getStr(signature, "context"); ok {
+		if _, isArtifact := artifactName(ctxS); isArtifact {
+			return verifyDocument(payload, signature, pubkeyB64, expectedKeyID)
+		}
+	}
+
 	r := newResult()
 
 	// Layer 1 — payload intact.
@@ -495,6 +641,22 @@ func loadArtifact(path string) (map[string]interface{}, map[string]interface{}, 
 		sig, _ := doc["signature"].(map[string]interface{})
 		frozen, _ := doc["frozen_inputs"].(map[string]interface{})
 		return payload, sig, frozen, nil, nil
+	}
+
+	// Signed exportable artifact (SBOM / VEX), spec §12: a wrapper
+	//   {"document": <cyclonedx/spdx/openvex doc>, "signature": <detached block>}.
+	// Recognize the top-level "document" key BEFORE the flat-pack fallback below —
+	// otherwise the flat path would treat the whole wrapper as a pack payload of
+	// {"document": …} and blank-and-rehash it (false tampered). The document is
+	// returned unchanged as the payload; verifyPack dispatches to the document path
+	// on the block's artifact context.
+	if _, hasDoc := doc["document"]; hasDoc {
+		document, _ := doc["document"].(map[string]interface{})
+		sig, sok := doc["signature"].(map[string]interface{})
+		if !sok {
+			return nil, nil, nil, nil, errors.New("artifact has a 'document' but no 'signature' block")
+		}
+		return document, sig, nil, nil, nil
 	}
 
 	sigV := doc["signature"]

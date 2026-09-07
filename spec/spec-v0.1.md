@@ -316,5 +316,100 @@ The format is expressible as an **in-toto Statement v1** wrapped in a **DSSE** e
 
 ---
 
+## 12. Signed exportable artifacts (SBOM / VEX)
+
+The same signing primitives (§4 canonical JSON, §6 Ed25519, §6.2 `key_id`) also sign Sentari's **exportable artifacts** — its **SBOM** (CycloneDX 1.6 / SPDX 2.3) and **VEX** (OpenVEX / CycloneDX) downloads — so the *entire* evidence surface, not just compliance packs, is offline-verifiable with the same tool and the same published key fingerprint. An SBOM/VEX is a **standard-schema document**, so the signature model differs from a pack in a few deliberate ways.
+
+### 12.1 The two contexts
+
+Each artifact type has its own **domain-separated context**, distinct from the pack's `sentari-evidence-pack/v1`:
+
+| Artifact | `ctx` |
+|---|---|
+| SBOM (CycloneDX or SPDX) | `sentari-sbom/v1` |
+| VEX (OpenVEX or CycloneDX) | `sentari-vex/v1` |
+
+The `ctx` is folded **inside** the Ed25519-signed envelope, so a signature can never cross-verify as a different artifact type — replaying an SBOM signature as a VEX (or as a pack) breaks the signature outright.
+
+### 12.2 Document-as-is hashing (NOT blank-and-rehash)
+
+A pack embeds its own `content_sha256` field and therefore hashes itself with that field **blanked** (§5.1). A standard-schema SBOM/VEX MUST NOT be mutated — injecting a `content_sha256` field would break schema conformance and downstream tool consumption. So the hash is over the **document exactly as emitted**:
+
+```
+content_sha256 = sha256( canonical_json(document) )     # no blanking, no field injection
+```
+
+The signature is **detached** (a sibling block, not a field of the document).
+
+**No floats in the hashed document (invariant, carried from §4).** `canonical_json` does **not** canonicalise numbers, so cross-language (Python ↔ Go) byte-equality holds only for strings, integers, and nested maps/arrays of those — never floats. A float would split-brain the verifiers (`json.dumps(10.0)` → `"10.0"` vs a Go `float64` → `"10"`). Both surfaces are float-free today (`version` is the integer `1`; component versions are strings; the VEX serializers emit no CVSS/EPSS scores), and a **conformant producer's signer MUST reject** any `float` — or any integer outside the JS safe-integer range ±2⁵³ — anywhere in the document at sign time, so the landmine is closed at the source rather than left to a foreign verifier. (To sign CVSS-in-VEX later, emit scores as strings, or move to a JCS/number-canonical ctx — a separately-reviewed change.)
+
+### 12.3 The 2-key signed envelope
+
+Ed25519 signs the canonical JSON of a **2-key** envelope — there is no `frozen_inputs_sha256` because an SBOM/VEX is the artifact itself, not a value derived from frozen inputs:
+
+```json
+{"content_sha256": "<hex>", "ctx": "sentari-sbom/v1"}
+```
+
+This is deliberately **not** the pack's 3-key `{content_sha256, ctx, frozen_inputs_sha256}` envelope (§6.1).
+
+### 12.4 The wrapper form & the detached block
+
+A signed artifact is a single JSON file — a wrapper pairing the untouched document with its detached block:
+
+```jsonc
+{
+  "document": { /* the CycloneDX / SPDX / OpenVEX document, byte-for-byte as exported */ },
+  "signature": {
+    "algorithm": "ed25519",
+    "context": "sentari-sbom/v1",
+    "key_id": "ed25519:…",
+    "content_sha256": "<hex>",
+    "value": "<base64 sig over canonical_json({content_sha256, ctx})>",
+    "public_key": "<base64 raw 32-byte key>",
+    "note": "<human verify instructions + attestation scope (§12.6)>"
+  }
+}
+```
+
+Extract `.document` for direct tool consumption; verify the whole wrapper for authenticity. (The raw, unsigned download remains available unchanged for tools that want only the document.)
+
+### 12.5 Shared key, one fingerprint
+
+SBOM/VEX are signed with the **same evidence Ed25519 key** that signs packs — so **one out-of-band-published `key_id` verifies packs, SBOMs and VEX alike**; no new key, no new trust anchor. **Accepted tradeoff (stated explicitly):** compromise or rotation of this one key invalidates trust in packs *and* SBOM *and* VEX together — inherent to a shared anchor, and the §12.1 `ctx` domain-separation is what makes sharing the key safe against cross-artifact replay.
+
+### 12.6 Verifier obligations (offline)
+
+A conformant offline verifier dispatches on the block's `context`. For an artifact `ctx` (`sentari-sbom/v1` / `sentari-vex/v1`) it MUST:
+
+1. **Layer 1** — recompute `sha256(canonical_json(document))` over the document **as-is** (NOT the pack's blank-and-rehash: a document has no `content_sha256` field to blank, and injecting one would produce a hash outside the signed bytes → false `tampered`).
+2. Compare that recomputed hash to the **block's** `content_sha256` (the document embeds none of its own).
+3. **Signature** — Ed25519-verify `value` over `canonical_json({content_sha256, ctx})` — the **2-key** envelope — and confirm `key_id` equals the key fingerprint AND (for a real trust decision) an out-of-band anchor.
+4. Recognize the `{"document":…, "signature":…}` **wrapper** before any flat-pack fallback, and **reject an unknown `ctx`** (neither the pack ctx nor a known artifact ctx) as `tampered` — an unknown format is never silently accepted.
+5. Report **Layer 2 (frozen inputs)** and **Layer 3 (collector re-derivation)** as **N/A** — this artifact class has neither. This is deliberately distinct wording from the pack's "skipped", so an auditor never conflates "this class has no Layer 2" with "could have checked, didn't."
+
+The verdict vocabulary (`verified` / `tampered` / `key_unknown`), exit codes, and the `key_id` trust model are exactly as for packs (§5.5, §9). The reference Python and Go verifiers both ship signed SBOM and VEX conformance vectors and verify them to `verified` byte-for-byte — the empirical proof the document path is reimplementable, not vendor-locked.
+
+### 12.7 Attestation scope
+
+A verified SBOM/VEX signature attests **integrity** (these exact bytes are unaltered) and **provenance / authenticity** (produced by this deployment's evidence key). It does **NOT** attest:
+
+- **completeness** — that every installed component / applicable vulnerability is listed;
+- **correctness** — that versions, licences, purls, or VEX statuses are accurate;
+- **freshness** — an SBOM/VEX is a **point-in-time** export, not a live view of the current fleet.
+
+The CycloneDX `compositions` known-unknowns buckets already signal content completeness honestly; the signature claim gets the same discipline. The detached block's `note` states this scope in-band.
+
+### 12.8 A canonical-form footgun (informative)
+
+Sentari's internal VEX-snapshot column hash uses `json.dumps(sort_keys, separators)` **without** `ensure_ascii=False`, whereas the signed `content_sha256` uses §4 `canonical_json` (**with** it). For non-ASCII content these two "canonical" hashes over the same document differ **by design** — they are intentionally independent. An auditor comparing a deployment's internal DB `sha256_hash` to the signed `content_sha256` MUST NOT read that mismatch as tampering; only the §12.6 recomputation is normative for a signed artifact.
+
+### 12.9 Standards alignment
+
+The §11 in-toto/DSSE framing applies unchanged: an SBOM/VEX maps to an in-toto Statement whose `subject[].digest.sha256` is the document hash and whose `predicateType` is the artifact `ctx` URI; the same DSSE-PAE gap and the same future-work stance hold.
+
+---
+
 ## Appendix A — Change log
 - **v0.1 (draft):** initial public draft. Adds `evidence_class`; **embeds `frozen_inputs` in the artifact** (signed `frozen_inputs.json` zip member + standalone-json sibling) so offline Layer 2 is checkable from the artifact alone; recommends in-toto/DSSE framing for v1. Open for CAB/auditor review.
+- **v0.1 (draft), §12 addition:** extends signing to **exportable artifacts** — signed SBOM (`sentari-sbom/v1`) and VEX (`sentari-vex/v1`) downloads. Document-as-is hashing (no blank-and-rehash), a 2-key `{content_sha256, ctx}` envelope, the `{document, signature}` wrapper form, the no-floats-in-hashed-content invariant, the shared evidence key/`key_id` across the whole surface, the document-path verifier obligations (Layer 2/3 **N/A**), and an explicit attestation-scope statement. Both reference verifiers (Python + Go) ship signed SBOM/VEX conformance vectors and verify them byte-for-byte.

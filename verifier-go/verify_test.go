@@ -462,6 +462,161 @@ func TestZipWithSwappedMemberIsTamperedViaManifest(t *testing.T) {
 	}
 }
 
+// --------------------------------------------------------------------------- //
+// Signed exportable artifacts (SBOM / VEX) — spec §12, design §4 obligations.
+// Both golden vectors verifying HERE, in Go, is the empirical proof that this
+// second implementation reproduces the document path byte-for-byte — the
+// Python↔Go byte-equality merge gate.
+// --------------------------------------------------------------------------- //
+var (
+	sbomVectorPath = filepath.Join("..", "verifier", "vectors", "sbom-cyclonedx.signed.golden.json")
+	vexVectorPath  = filepath.Join("..", "verifier", "vectors", "vex-openvex.signed.golden.json")
+)
+
+func artifactKeyID(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	docV, _ := parseJSON(raw)
+	doc := docV.(map[string]interface{})
+	kid, _ := getStr(doc["signature"].(map[string]interface{}), "key_id")
+	return kid
+}
+
+func TestSignedArtifactVectorsVerify(t *testing.T) {
+	for _, vp := range []string{sbomVectorPath, vexVectorPath} {
+		payload, sig, frozen, mc, err := loadArtifact(vp)
+		if err != nil {
+			t.Fatalf("load %s: %v", vp, err)
+		}
+		r := verifyPack(payload, sig, frozen, mc, nil, strp(artifactKeyID(t, vp)))
+		if r.verdict() != "verified" {
+			t.Fatalf("%s verdict=%s notes=%v", vp, r.verdict(), r.Notes)
+		}
+		// Obligation 5 — Layer 2/3 are N/A (nil), not merely false.
+		if r.FrozenInputsValid != nil || r.ManifestValid != nil {
+			t.Fatalf("%s: Layer 2/3 must be N/A (nil), got frozen=%v manifest=%v", vp, r.FrozenInputsValid, r.ManifestValid)
+		}
+		if !isTrue(r.PayloadIntact) || !isTrue(r.SignatureValid) ||
+			!isTrue(r.KeyIDMatchesMaterial) || !isTrue(r.KeyIDMatchesAnchor) {
+			t.Fatalf("%s flags: intact=%v sig=%v material=%v anchor=%v",
+				vp, r.PayloadIntact, r.SignatureValid, r.KeyIDMatchesMaterial, r.KeyIDMatchesAnchor)
+		}
+	}
+}
+
+// One published key_id fingerprint anchors the whole surface: both golden signed
+// artifacts share it (and it also anchors packs — same evidence key).
+func TestOneKeyIDAcrossSignedArtifacts(t *testing.T) {
+	if artifactKeyID(t, sbomVectorPath) != artifactKeyID(t, vexVectorPath) {
+		t.Fatal("SBOM and VEX vectors must share one evidence key_id")
+	}
+}
+
+func TestSignedArtifactWrapperRecognizedBeforeFlatFallback(t *testing.T) {
+	payload, sig, frozen, mc, err := loadArtifact(sbomVectorPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	// The payload IS the document, not a {"document":…} wrap.
+	if _, wrapped := payload["document"]; wrapped {
+		t.Fatal("loader misread the wrapper as a flat pack payload {\"document\":…}")
+	}
+	if _, hasBom := payload["bomFormat"]; !hasBom {
+		t.Fatal("expected the document itself as the payload (bomFormat missing)")
+	}
+	if kid, _ := getStr(sig, "key_id"); kid != artifactKeyID(t, sbomVectorPath) {
+		t.Fatal("signature block not preserved")
+	}
+	if frozen != nil || mc != nil {
+		t.Fatal("a signed artifact has no frozen_inputs / manifest")
+	}
+}
+
+// writeMutatedVector round-trips a vector through a mutator and writes it to a temp
+// file, returning the path.
+func writeMutatedVector(t *testing.T, src string, mutate func(doc map[string]interface{})) string {
+	t.Helper()
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read %s: %v", src, err)
+	}
+	docV, _ := parseJSON(raw)
+	doc := docV.(map[string]interface{})
+	mutate(doc)
+	out, _ := json.Marshal(doc)
+	p := filepath.Join(t.TempDir(), "mutated.json")
+	if err := os.WriteFile(p, out, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	return p
+}
+
+func TestSignedArtifactTamperedDocumentIsTampered(t *testing.T) {
+	p := writeMutatedVector(t, sbomVectorPath, func(doc map[string]interface{}) {
+		doc["document"].(map[string]interface{})["specVersion"] = "9.9" // flip a document field
+	})
+	payload, sig, frozen, mc, err := loadArtifact(p)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	r := verifyPack(payload, sig, frozen, mc, nil, nil)
+	if r.verdict() != "tampered" || !isFalse(r.PayloadIntact) {
+		t.Fatalf("verdict=%s intact=%v", r.verdict(), r.PayloadIntact)
+	}
+}
+
+func TestSignedArtifactRelabelledWithPackCtxIsTampered(t *testing.T) {
+	p := writeMutatedVector(t, sbomVectorPath, func(doc map[string]interface{}) {
+		doc["signature"].(map[string]interface{})["context"] = signingContext // pack ctx
+	})
+	payload, sig, frozen, mc, err := loadArtifact(p)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	r := verifyPack(payload, sig, frozen, mc, nil, nil)
+	if r.verdict() != "tampered" {
+		t.Fatalf("cross-ctx replay must be tampered, got %s notes=%v", r.verdict(), r.Notes)
+	}
+}
+
+func TestSignedArtifactUnknownCtxIsTampered(t *testing.T) {
+	p := writeMutatedVector(t, sbomVectorPath, func(doc map[string]interface{}) {
+		doc["signature"].(map[string]interface{})["context"] = "sentari-mystery/v1"
+	})
+	payload, sig, frozen, mc, err := loadArtifact(p)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	r := verifyPack(payload, sig, frozen, mc, nil, nil)
+	if r.verdict() != "tampered" {
+		t.Fatalf("unknown ctx must be tampered, got %s", r.verdict())
+	}
+}
+
+func TestSignedArtifactAnchorMismatchIsKeyUnknown(t *testing.T) {
+	payload, sig, frozen, mc, err := loadArtifact(vexVectorPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	r := verifyPack(payload, sig, frozen, mc, nil, strp("ed25519:deadbeefdeadbeefdeadbeefdeadbeef"))
+	if r.verdict() != "key_unknown" || !isTrue(r.SignatureValid) || !isFalse(r.KeyIDMatchesAnchor) {
+		t.Fatalf("verdict=%s sig=%v anchor=%v", r.verdict(), r.SignatureValid, r.KeyIDMatchesAnchor)
+	}
+}
+
+func TestSignedArtifactCLIExitCodes(t *testing.T) {
+	kid := artifactKeyID(t, sbomVectorPath)
+	if code := run([]string{sbomVectorPath, "--expected-key-id", kid}, os.Stdout, os.Stderr); code != 0 {
+		t.Fatalf("verified SBOM should exit 0, got %d", code)
+	}
+	if code := run([]string{vexVectorPath, "--expected-key-id", kid}, os.Stdout, os.Stderr); code != 0 {
+		t.Fatalf("verified VEX should exit 0, got %d", code)
+	}
+}
+
 // CLI exit-code smoke test over the real vector.
 func TestRunExitCodes(t *testing.T) {
 	if code := run([]string{vectorPath}, os.Stdout, os.Stderr); code != 0 {

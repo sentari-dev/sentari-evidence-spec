@@ -4,9 +4,12 @@
 //
 //	sentari-evidence-verify PACK [--pubkey B64] [--expected-key-id ID] [--json]
 //
-// PACK is a .json (flat server download or {payload,signature,frozen_inputs}
-// wrapper), a .zip, or a directory containing manifest.json + evidence.json +
-// signature.json (+ frozen_inputs.json).
+// PACK is either an evidence pack — a .json (flat server download or
+// {payload,signature,frozen_inputs} wrapper), a .zip, or a directory containing
+// manifest.json + evidence.json + signature.json (+ frozen_inputs.json) — OR a
+// signed exportable artifact: a .json wrapper {"document":…, "signature":…} for a
+// CycloneDX/SPDX SBOM or OpenVEX/CycloneDX VEX (spec §12). The same published
+// key_id verifies packs, SBOMs and VEX alike.
 //
 // Exit codes: 0 = verified, 2 = tampered, 3 = key_unknown, 4 = usage/parse error.
 package main

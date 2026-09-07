@@ -1,0 +1,32 @@
+{
+  "document": {
+    "@context": "https://openvex.dev/ns/v0.2.0",
+    "@id": "https://sentari.dev/vex/sample",
+    "author": "Sentari",
+    "timestamp": "2026-09-07T00:00:00Z",
+    "version": 1,
+    "statements": [
+      {
+        "vulnerability": {
+          "name": "CVE-2024-0001"
+        },
+        "products": [
+          {
+            "@id": "pkg:pypi/requests@2.32.3"
+          }
+        ],
+        "status": "not_affected",
+        "justification": "vulnerable_code_not_in_execute_path"
+      }
+    ]
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "context": "sentari-vex/v1",
+    "key_id": "ed25519:eb719d5bab969e9f243775b329a23ac6",
+    "content_sha256": "39a8b8e0e5ddff2bc89372950f9d32ba09155b05edb42543dd6f9e7e2778a461",
+    "value": "7Dy2dcWUGIzmDbmjORpqs1S7xw6kYBTI3Ejw4EWf7tpTNU24wK3fCjbG72nJY29GQaaJyh1f+Fp5C51zwrKsDg==",
+    "public_key": "XP9ehc1r/9ym/HG0sSoyZdG2Rc5KzNXg8Z6ofJF3Qzk=",
+    "note": "Detached Ed25519 signature over the canonical JSON of {content_sha256, ctx}. To verify: canonicalise the sibling 'document' (sorted keys, no whitespace, ensure_ascii=False), sha256 it (must equal content_sha256), then verify value against public_key over canonical_json({content_sha256, ctx}) (confirm key_id is your deployment's published evidence signing-key fingerprint). A verified signature attests INTEGRITY (these exact bytes are unaltered) and PROVENANCE (produced by this deployment's evidence key). It does NOT attest completeness (that every installed component is listed), correctness (that versions/licences/purls/VEX statuses are accurate), or freshness (this is a point-in-time export, not the live fleet state)."
+  }
+}

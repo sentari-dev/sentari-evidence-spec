@@ -386,3 +386,142 @@ def test_zip_with_swapped_member_is_tampered_via_manifest(tmp_path):
     r = V.verify_pack(payload, sig, frozen, manifest_ctx=manifest_ctx, expected_key_id=key_id)
     assert r.verdict == "tampered"
     assert r.manifest_valid is False
+
+
+# --------------------------------------------------------------------------- #
+# Signed exportable artifacts (SBOM / VEX) — spec §12, design §4 obligations.
+# Each of these is a REGRESSION test: reusing the pack path verbatim would
+# false-`tampered` a valid SBOM/VEX. The two golden vectors are REAL signed
+# artifacts (2-key envelope, shared evidence key) — both verifiers verifying both
+# is the Python↔Go byte-equality merge gate.
+# --------------------------------------------------------------------------- #
+_SBOM_VECTOR = (
+    pathlib.Path(__file__).parent / "vectors" / "sbom-cyclonedx.signed.golden.json"
+)
+_VEX_VECTOR = (
+    pathlib.Path(__file__).parent / "vectors" / "vex-openvex.signed.golden.json"
+)
+
+
+def _artifact_key_id(vector: pathlib.Path) -> str:
+    return _json.loads(vector.read_text())["signature"]["key_id"]
+
+
+def test_signed_sbom_vector_verifies():
+    """A REAL signed CycloneDX SBOM verifies: document hashed AS-IS (not blanked),
+    2-key {content_sha256, ctx} envelope, key anchored to its own key_id."""
+    payload, sig, frozen, manifest = V._load_artifact(_SBOM_VECTOR)
+    r = V.verify_pack(payload, sig, frozen, expected_key_id=_artifact_key_id(_SBOM_VECTOR))
+    assert r.verdict == "verified"
+    assert r.payload_intact is True
+    assert r.signature_valid is True
+    assert r.key_id_matches_material is True
+    assert r.key_id_matches_anchor is True
+
+
+def test_signed_vex_vector_verifies():
+    """A REAL signed OpenVEX document verifies through the same document path."""
+    payload, sig, frozen, manifest = V._load_artifact(_VEX_VECTOR)
+    r = V.verify_pack(payload, sig, frozen, expected_key_id=_artifact_key_id(_VEX_VECTOR))
+    assert r.verdict == "verified"
+    assert r.payload_intact is True
+    assert r.signature_valid is True
+
+
+def test_signed_artifact_layer2_and_layer3_reported_na_not_skipped():
+    """Obligation 5: Layer 2/3 are N/A for this artifact class (no frozen_inputs,
+    no collector) — distinct wording from the pack's "skipped"."""
+    payload, sig, frozen, _manifest = V._load_artifact(_SBOM_VECTOR)
+    assert frozen is None  # no frozen_inputs sibling at all
+    r = V.verify_pack(payload, sig, frozen)
+    assert r.frozen_inputs_valid is None
+    assert r.manifest_valid is None
+    joined = " ".join(r.notes)
+    assert "N/A" in joined
+    assert "skipped" not in joined  # must NOT reuse the pack's word
+
+
+def test_signed_artifact_wrapper_recognized_before_flat_fallback():
+    """Obligation 4: the loader must recognize {"document":…, "signature":…} as a
+    wrapper and return the document unchanged — NOT misread it as a flat pack whose
+    payload is {"document":…}."""
+    doc = _json.loads(_SBOM_VECTOR.read_text())
+    payload, sig, frozen, manifest = V._load_artifact(_SBOM_VECTOR)
+    assert payload == doc["document"]  # the document itself, not a {"document":…} wrap
+    assert "document" not in payload
+    assert sig == doc["signature"]
+    assert frozen is None and manifest is None
+
+
+def test_signed_sbom_tampered_document_byte_is_tampered(tmp_path):
+    """Flip one byte of the signed document → the recomputed hash no longer matches
+    the block's content_sha256 → tampered (Layer 1 fails)."""
+    doc = _json.loads(_SBOM_VECTOR.read_text())
+    doc["document"]["components"][0]["version"] = "9.9.9"  # was 2.32.3
+    p = tmp_path / "tampered.json"
+    p.write_text(_json.dumps(doc))
+    payload, sig, frozen, _manifest = V._load_artifact(p)
+    r = V.verify_pack(payload, sig, frozen)
+    assert r.verdict == "tampered"
+    assert r.payload_intact is False
+
+
+def test_signed_sbom_relabelled_with_pack_ctx_is_tampered(tmp_path):
+    """Cross-ctx replay: relabel an SBOM block with the pack ctx. The ctx is folded
+    inside the signed envelope, so this can never verify — the dispatch routes it to
+    the pack path where the document (no content_sha256 field) fails Layer 1."""
+    doc = _json.loads(_SBOM_VECTOR.read_text())
+    doc["signature"]["context"] = V.SIGNING_CONTEXT  # sentari-evidence-pack/v1
+    p = tmp_path / "relabelled.json"
+    p.write_text(_json.dumps(doc))
+    payload, sig, frozen, _manifest = V._load_artifact(p)
+    r = V.verify_pack(payload, sig, frozen)
+    assert r.verdict == "tampered"
+
+
+def test_evidence_pack_relabelled_with_sbom_ctx_is_tampered(tmp_path):
+    """The reverse cross-ctx replay: relabel a real evidence pack's block with the
+    SBOM ctx. The document path hashes the pack payload AS-IS (no blanking), which
+    never matches the pack's blanked content_sha256 → tampered."""
+    doc = _json.loads(_VECTOR.read_text())  # the real CyFun pack (flat form)
+    doc["signature"]["context"] = V.SBOM_CONTEXT
+    p = tmp_path / "relabelled-pack.json"
+    p.write_text(_json.dumps(doc))
+    payload, sig, frozen, _manifest = V._load_artifact(p)
+    r = V.verify_pack(payload, sig, frozen)
+    assert r.verdict == "tampered"
+
+
+def test_signed_artifact_unknown_ctx_is_tampered(tmp_path):
+    """Obligation 4: a block whose context is neither the pack ctx nor a known
+    artifact ctx is an unknown format → tampered, never silently accepted."""
+    doc = _json.loads(_SBOM_VECTOR.read_text())
+    doc["signature"]["context"] = "sentari-mystery/v1"
+    p = tmp_path / "unknown-ctx.json"
+    p.write_text(_json.dumps(doc))
+    payload, sig, frozen, _manifest = V._load_artifact(p)
+    r = V.verify_pack(payload, sig, frozen)
+    assert r.verdict == "tampered"
+
+
+def test_signed_sbom_anchor_mismatch_is_key_unknown():
+    """A correctly-signed SBOM whose key is not the pinned one is key_unknown
+    (authenticity not established), never tampered — same trust model as packs."""
+    payload, sig, frozen, _manifest = V._load_artifact(_SBOM_VECTOR)
+    r = V.verify_pack(
+        payload, sig, frozen, expected_key_id="ed25519:deadbeefdeadbeefdeadbeefdeadbeef"
+    )
+    assert r.verdict == "key_unknown"
+    assert r.key_id_matches_anchor is False
+    assert r.signature_valid is True  # the math verifies; only the anchor differs
+
+
+def test_one_key_id_verifies_both_a_pack_and_a_signed_artifact():
+    """The SAME key_id fingerprint anchors packs, SBOMs and VEX — one published
+    fingerprint covers the whole evidence surface. Both golden signed artifacts
+    share a key_id; assert an SBOM and a VEX verify under the one anchor."""
+    kid = _artifact_key_id(_SBOM_VECTOR)
+    assert kid == _artifact_key_id(_VEX_VECTOR)  # one key across the surface
+    for vec in (_SBOM_VECTOR, _VEX_VECTOR):
+        payload, sig, frozen, _m = V._load_artifact(vec)
+        assert V.verify_pack(payload, sig, frozen, expected_key_id=kid).verdict == "verified"

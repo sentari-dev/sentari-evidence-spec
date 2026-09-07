@@ -1,0 +1,37 @@
+{
+  "document": {
+    "bomFormat": "CycloneDX",
+    "specVersion": "1.6",
+    "version": 1,
+    "metadata": {
+      "component": {
+        "type": "application",
+        "name": "sentari-fleet",
+        "version": "1.2.0"
+      }
+    },
+    "components": [
+      {
+        "type": "library",
+        "name": "requests",
+        "version": "2.32.3",
+        "purl": "pkg:pypi/requests@2.32.3"
+      },
+      {
+        "type": "library",
+        "name": "lodash",
+        "version": "4.17.21",
+        "purl": "pkg:npm/lodash@4.17.21"
+      }
+    ]
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "context": "sentari-sbom/v1",
+    "key_id": "ed25519:eb719d5bab969e9f243775b329a23ac6",
+    "content_sha256": "c97ea578f9b562296d70872babf034d3f3365b2ad94d6427f7bc17029ed7a7cb",
+    "value": "SOH0znKSGqFn2Lnq0w22JnCUpKdP8CSdzLqWiZlfkbYX1ejBHzN3/Vrflnlt+aXzQZHlpIoUKkFqtwKXxb+ZAg==",
+    "public_key": "XP9ehc1r/9ym/HG0sSoyZdG2Rc5KzNXg8Z6ofJF3Qzk=",
+    "note": "Detached Ed25519 signature over the canonical JSON of {content_sha256, ctx}. To verify: canonicalise the sibling 'document' (sorted keys, no whitespace, ensure_ascii=False), sha256 it (must equal content_sha256), then verify value against public_key over canonical_json({content_sha256, ctx}) (confirm key_id is your deployment's published evidence signing-key fingerprint). A verified signature attests INTEGRITY (these exact bytes are unaltered) and PROVENANCE (produced by this deployment's evidence key). It does NOT attest completeness (that every installed component is listed), correctness (that versions/licences/purls/VEX statuses are accurate), or freshness (this is a point-in-time export, not the live fleet state)."
+  }
+}

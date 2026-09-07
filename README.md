@@ -12,7 +12,9 @@ at all**:
 1. **[`spec/spec-v0.1.md`](spec/spec-v0.1.md)** — the open specification of the pack
    format: canonical JSON, the content hash, the domain-separated Ed25519 signature
    envelope, the frozen-inputs model, the signed zip manifest, and the evidence-class
-   grading (derived / observed / declared).
+   grading (derived / observed / declared). **§12** extends the same primitives to
+   Sentari's signed **SBOM and VEX** exports, so the whole evidence surface — not just
+   compliance packs — is offline-verifiable with the same tool and the same key.
 2. **[`verifier/`](verifier/)** — a single-file, dependency-light **reference offline
    verifier** (Python + `cryptography`). It re-derives every hash and checks every
    signature independently of the server.
@@ -68,7 +70,11 @@ for the pack's `catalog_version` and is out of scope for this offline tool.
 conformant producer would, asserts every tamper mutation is caught, pins the canonical
 byte encoding, and — crucially — verifies a **real Sentari-signed CyFun pack** committed
 under [`verifier/vectors/`](verifier/vectors/) (an empty-fleet pack, no PII), cross-
-validating the reference verifier against the actual producer.
+validating the reference verifier against the actual producer. It also verifies committed
+**signed SBOM and VEX** vectors (`sbom-cyclonedx.signed.golden.json`,
+`vex-openvex.signed.golden.json`) through the §12 document path — and **both** the Python
+and Go verifiers verify **both** artifacts to `verified` byte-for-byte, which is the
+empirical proof the format is genuinely reimplementable across languages.
 
 ```bash
 pip install cryptography pytest && (cd verifier && pytest)

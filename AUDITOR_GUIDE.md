@@ -24,6 +24,17 @@ control result carries:
 A pack **supports** CyFun/NIS2/DORA/CRA verification or certification performed by the entity or a
 BELAC-accredited CAB. It is **not** a certificate and asserts no presumption of conformity.
 
+**The same tool also verifies signed SBOM / VEX exports.** Sentari's SBOM (CycloneDX / SPDX) and VEX
+(OpenVEX / CycloneDX) downloads can be handed to you as a signed wrapper `{"document": …,
+"signature": …}` (spec [§12](spec/spec-v0.1.md)). Verify them exactly the same way — same command,
+same `--expected-key-id`, same verdicts — because they are signed with the **same evidence key**, so
+the one published `key_id` you pin covers packs, SBOMs and VEX alike. One caveat on scope: a verified
+SBOM/VEX signature proves **integrity** (these exact bytes are unaltered) and **provenance** (produced
+by this deployment's key). It does **not** prove **completeness** (every component is listed),
+**correctness** (versions / licences / statuses are accurate), or **freshness** (it is a point-in-time
+export, not the live fleet). Treat it as authentic evidence of what was exported, when — not as a
+guarantee of what is installed right now.
+
 ## The trust model — one thing you must do out-of-band
 
 The pack is signed with an Ed25519 key. Verifying the signature proves the pack is internally
@@ -76,8 +87,9 @@ or machine.
 ## Conformance vector
 
 `verifier/vectors/cyfun-empty-fleet.golden.json` is a **real Sentari-signed CyFun pack** (empty
-fleet, no PII). Both reference verifiers verify it, cross-validating each other against the actual
-producer. Run `pytest` (Python) or `go test ./...` (Go) to see it.
+fleet, no PII). `sbom-cyclonedx.signed.golden.json` and `vex-openvex.signed.golden.json` are **real
+signed SBOM and VEX** artifacts (spec §12). Both reference verifiers verify all three, cross-validating
+each other against the actual producer. Run `pytest` (Python) or `go test ./...` (Go) to see it.
 
 ---
 
