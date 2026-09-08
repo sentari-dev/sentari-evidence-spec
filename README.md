@@ -80,6 +80,15 @@ empirical proof the format is genuinely reimplementable across languages.
 pip install cryptography pytest && (cd verifier && pytest)
 ```
 
+**[`CONFORMANCE.md`](CONFORMANCE.md)** is the published contract: the exact verdict every
+committed vector must produce (default, correct/wrong `--expected-key-id`, tampered), the
+mutation matrix a conformant verifier must catch, and a reimplementer's checklist. Prove the
+whole thing — both verifiers, every vector, plus tamper detection — in one command:
+
+```bash
+verifier/conformance.sh      # builds the Go binary, runs all checks, prints PASS/FAIL
+```
+
 ## Status
 
 **v0.1 DRAFT** — published for review with auditors and CABs; not yet a frozen v1. Issues

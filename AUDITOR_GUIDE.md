@@ -91,6 +91,10 @@ fleet, no PII). `sbom-cyclonedx.signed.golden.json` and `vex-openvex.signed.gold
 signed SBOM and VEX** artifacts (spec §12). Both reference verifiers verify all three, cross-validating
 each other against the actual producer. Run `pytest` (Python) or `go test ./...` (Go) to see it.
 
+For the exact verdict each vector must produce — by itself, under a correct vs wrong pinned
+`--expected-key-id`, and when tampered — plus a one-command proof that both verifiers agree, see
+**[`CONFORMANCE.md`](CONFORMANCE.md)** and run `verifier/conformance.sh`.
+
 ---
 
 *Questions on the format or an independent reimplementation are welcome via the repository's issues.

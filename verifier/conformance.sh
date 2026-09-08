@@ -1,0 +1,80 @@
+#!/bin/sh
+# Conformance runner — proves BOTH reference verifiers (Python + Go) agree with
+# the documented verdict for every committed vector, with no Sentari deployment
+# and no network. An auditor/CAB runs this to convince themselves the format is
+# genuinely open and offline-verifiable; a reimplementer runs it to self-check.
+#
+# Exit 0 iff every vector produces its documented verdict in BOTH languages.
+# See CONFORMANCE.md for the expected-verdict table this script enforces.
+#
+# Requirements: python3 + `pip install cryptography`; go (to build the Go verifier).
+set -eu
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO=$(CDPATH= cd -- "$HERE/.." && pwd)
+VECTORS="$HERE/vectors"
+PY="${PYTHON:-python3}"
+PYV="$HERE/sentari_evidence_verify.py"
+
+# Build the Go verifier into a temp binary.
+GOBIN=$(mktemp -u /tmp/sentari-evidence-verify.XXXXXX)
+( cd "$REPO/verifier-go" && go build -o "$GOBIN" . )
+trap 'rm -f "$GOBIN" "$TAMPER"' EXIT
+TAMPER=$(mktemp /tmp/sentari-conformance-tamper.XXXXXX.json)
+
+fail=0
+pass=0
+
+# check <label> <expected-exit> <verifier-cmd...>
+check() {
+  label=$1; want=$2; shift 2
+  "$@" >/dev/null 2>&1 && got=0 || got=$?
+  if [ "$got" -eq "$want" ]; then
+    pass=$((pass + 1)); printf '  PASS  %s (exit %s)\n' "$label" "$got"
+  else
+    fail=$((fail + 1)); printf '  FAIL  %s (got exit %s, want %s)\n' "$label" "$got" "$want"
+  fi
+}
+
+# Every committed vector: verified (0) by default AND under its correct pinned
+# key_id; key_unknown (3) under a wrong pin. Vocabulary/exit map: 0 verified,
+# 2 tampered, 3 key_unknown (CONFORMANCE.md).
+CYFUN_KID="ed25519:2c324e5afc47408739876dba4886ef19"
+SIGNED_KID="ed25519:eb719d5bab969e9f243775b329a23ac6"
+WRONG_KID="ed25519:00000000000000000000000000000000"
+
+run_vector() {
+  name=$1; kid=$2; f="$VECTORS/$name"
+  echo "# $name"
+  check "python  default            -> verified"    0 "$PY" "$PYV" "$f"
+  check "python  correct key pin    -> verified"    0 "$PY" "$PYV" "$f" --expected-key-id "$kid"
+  check "python  wrong key pin      -> key_unknown" 3 "$PY" "$PYV" "$f" --expected-key-id "$WRONG_KID"
+  check "go      default            -> verified"    0 "$GOBIN" "$f"
+  check "go      correct key pin    -> verified"    0 "$GOBIN" "$f" --expected-key-id "$kid"
+  check "go      wrong key pin      -> key_unknown" 3 "$GOBIN" "$f" --expected-key-id "$WRONG_KID"
+}
+
+run_vector "cyfun-empty-fleet.golden.json"      "$CYFUN_KID"
+run_vector "sbom-cyclonedx.signed.golden.json"  "$SIGNED_KID"
+run_vector "vex-openvex.signed.golden.json"     "$SIGNED_KID"
+
+# Tamper detection: flip one content byte in a signed document -> tampered (2)
+# in BOTH languages. This is the property that makes a verified signature mean
+# something.
+echo "# tamper detection (mutated copy of the SBOM vector)"
+"$PY" - "$VECTORS/sbom-cyclonedx.signed.golden.json" "$TAMPER" <<'PYEOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["document"]["bomFormat"] = "CycloneDX-TAMPERED"
+json.dump(d, open(sys.argv[2], "w"))
+PYEOF
+check "python  tampered document   -> tampered"    2 "$PY" "$PYV" "$TAMPER"
+check "go      tampered document   -> tampered"    2 "$GOBIN" "$TAMPER"
+
+echo
+if [ "$fail" -eq 0 ]; then
+  printf 'CONFORMANCE PASS — %s checks, both verifiers agree.\n' "$pass"
+  exit 0
+fi
+printf 'CONFORMANCE FAIL — %s failed / %s passed.\n' "$fail" "$pass"
+exit 1
