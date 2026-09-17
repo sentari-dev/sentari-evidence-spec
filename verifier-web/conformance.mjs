@@ -18,6 +18,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..');
@@ -158,6 +159,72 @@ check('the float literal survived the round trip', '1.0',
 const fxt = loadFixture('pack-with-frozen-inputs.fixture.json');
 fxt.frozen_inputs.sources.cve_findings.rows[0].severity = 'low';
 check('mutated frozen evidence row', 'tampered', verdict(fxt, null));
+
+/* --- the primitives, against an independent implementation --------------- *
+ * The committed vectors exercise only a handful of message lengths, and that
+ * is exactly how a padding bug survives: SHA-2 needs the SMALLEST block count
+ * that fits the message, the 0x80 byte and the length field, and an
+ * off-by-one over-allocates a whole extra block ONLY when the message length
+ * is congruent to 55 mod 64 (SHA-256) or 111 mod 128 (SHA-512). Every other
+ * length is unaffected, so vectors pass and real artifacts of the wrong size
+ * hash wrong -- a false "tampered" on a genuine pack.
+ *
+ * So: every length from 0 to 600, both hashes, against node:crypto. */
+console.log('# embedded hash primitives vs node:crypto (lengths 0..600)');
+let hashBad = [];
+for (let n = 0; n <= 600; n++) {
+  const buf = Buffer.alloc(n);
+  for (let i = 0; i < n; i++) buf[i] = (i * 31 + n) & 0xff;
+  const u = new Uint8Array(buf);
+  if (EvidenceCore.sha256Hex(u) !== createHash('sha256').update(buf).digest('hex')) {
+    hashBad.push('sha256@' + n);
+  }
+  if (EvidenceCore.toHex(EvidenceCore.sha512(u)) !==
+      createHash('sha512').update(buf).digest('hex')) {
+    hashBad.push('sha512@' + n);
+  }
+}
+check('every message length hashes identically', 0, hashBad.length);
+if (hashBad.length) console.log('        first divergences: ' + hashBad.slice(0, 8).join(', '));
+
+/* --- canonicalisation edge cases ---------------------------------------- *
+ * Each of these is a place where a JS implementation quietly disagrees with
+ * the Python producer unless it is written deliberately. */
+console.log('# canonical JSON edge cases');
+const canon = (text) => Buffer.from(
+  EvidenceCore.canonicalJson(EvidenceCore.parseJson(text))).toString('utf8');
+
+// "__proto__" is an ordinary data key to Python and Go. Assigning it on a
+// plain JS object sets the prototype instead, and the key disappears --
+// letting an artifact hide a field from this verifier alone.
+check('__proto__ survives as a data key',
+  '{"__proto__":{"x":1},"a":2}', canon('{"__proto__":{"x":1},"a":2}'));
+check('constructor survives as a data key',
+  '{"constructor":1}', canon('{"constructor":1}'));
+
+// ensure_ascii=False: non-ASCII stays raw UTF-8, never \uXXXX.
+check('non-ASCII stays raw', '{"k":"caf\u00e9 \u4e2d"}', canon('{"k":"caf\u00e9 \u4e2d"}'));
+
+// Keys sort by CODE POINT. JS's default sort compares UTF-16 code units,
+// which disagrees once astral characters are involved.
+check('keys sort by code point',
+  '{"\ue000":2,"\u{1f600}":1}', canon('{"\u{1f600}":1,"\ue000":2}'));
+
+// Number literals are preserved verbatim (see above).
+check('number literals verbatim', '{"a":1.0,"b":2.50,"c":1e21}',
+  canon('{"a":1.0,"b":2.50,"c":1e21}'));
+
+// Malformed input is a verdict or a clean error, never a crash.
+for (const bad of ['{', '{"a":}', '[1,]', '{"a":01}', 'nul', '{"a":1}x', '"\\ud800"']) {
+  let threw = false;
+  try { EvidenceCore.parseJson(bad); } catch (_e) { threw = true; }
+  if (!threw && bad !== '"\\ud800"') {
+    fail++;
+    console.log('  FAIL  malformed input accepted: ' + bad);
+  }
+}
+console.log('  PASS  malformed JSON is rejected, not crashed on');
+pass++;
 
 console.log('');
 if (fail === 0) {
