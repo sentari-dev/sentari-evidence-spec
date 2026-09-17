@@ -7,9 +7,14 @@ you do two things with **no Sentari deployment and no network**:
 2. **Self-check a reimplementation** — if you rewrite the verifier in your own language,
    run it against the committed vectors and confirm it produces the verdicts below.
 
-Two independent reference verifiers ship here — `verifier/` (Python) and `verifier-go/`
-(Go, single static binary). They agree **byte-for-byte** on every vector; that agreement is
-the strongest evidence the format is genuinely open and not vendor-locked.
+Three independent reference verifiers ship here — [`verify.html`](../verify.html) (a
+dependency-free browser page), `verifier/` (Python) and `verifier-go/` (Go, single static
+binary). They agree **byte-for-byte** on every vector; that agreement is the strongest
+evidence the format is genuinely open and not vendor-locked.
+
+The browser verifier is held to this same table by `verifier-web/conformance.mjs`, which
+extracts the verification core out of the shipped HTML — the exact bytes an auditor runs —
+and drives the vectors and the mutation matrix through it.
 
 ## Verify without deploying (3 commands)
 
@@ -23,7 +28,7 @@ Or prove the **whole** contract — both verifiers, every vector, plus tamper de
 one command:
 
 ```sh
-verifier/conformance.sh      # builds the Go binary, runs all checks, prints PASS/FAIL
+verifier/conformance.sh      # all three verifiers, every vector, prints PASS/FAIL
 ```
 
 ## Verdict vocabulary

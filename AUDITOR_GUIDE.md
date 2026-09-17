@@ -6,8 +6,9 @@ and untampered — **offline, with no dependency on Sentari**.
 
 You do not need to trust Sentari's word, its servers, or even its software. The format is open
 ([`spec/spec-v0.1.md`](spec/spec-v0.1.md)) and the verifier is free and reimplementable — there are
-two independent reference implementations in this repository ([Python](verifier/) and
-[Go](verifier-go/)) that agree byte-for-byte on the same pack.
+**three** independent reference implementations in this repository ([a browser page](verify.html),
+[Python](verifier/) and [Go](verifier-go/)) that agree byte-for-byte on the same pack. You can
+read the browser one's entire source with View Source.
 
 ## What a pack is
 
@@ -44,7 +45,33 @@ documentation, a signed email, a portal — not the pack itself). Ask the deploy
 their published `key_id`, and pass it as `--expected-key-id`. Without that anchor, the tool verifies
 the maths but tells you authenticity is *not* established.
 
-## Verify in three commands
+## Verify it — no installation, no terminal, no network
+
+Open **[`verify.html`](verify.html)** and drop the file in.
+
+It is a single self-contained page. Save it to a USB stick, double-click it, and it works
+from `file://` on a machine that has never been online: no install, no admin rights, no
+Python, no network connection at any point. It re-checks every hash and the signature on
+your own computer, then renders the assessment itself — the control results, what needs
+remediation, and the underlying source records the results were computed from — so the same
+page that establishes the file is genuine is the one you read it in. It prints as a document
+you can put in an evidence file.
+
+You will need one thing besides the file: **the signing fingerprint the deployment publishes
+through a channel you already trust**. See the trust model below — the page prompts you for
+it and will not show a clean result until you supply it.
+
+To confirm the page itself is the published one and not an altered copy, compare its
+SHA-256 against `verify.html.sha256` in this repository:
+
+```sh
+shasum -a 256 verify.html
+```
+
+### Or from a terminal, if you prefer
+
+Two command-line verifiers do exactly the same checks — one in Python, one a single static
+Go binary that suits an air-gapped machine:
 
 ```bash
 pip install cryptography                          # the only dependency
@@ -54,7 +81,7 @@ echo $?
 ```
 
 `PACK` is the file you were handed — a `.json`, a `.zip` bundle, or a directory of its members.
-(Prefer a single static binary? Build the Go verifier: `cd verifier-go && go build` — same result.)
+(For the static binary: `cd verifier-go && go build` — same result.)
 
 ## What the verdict means
 

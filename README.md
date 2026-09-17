@@ -9,6 +9,12 @@ checkable by **whoever needs to trust it** — an auditor, a conformity-assessme
 (CAB), a customer, a regulator — with **no dependency on Sentari's servers and no network
 at all**:
 
+0. **[`verify.html`](verify.html)** — a **single self-contained page** that verifies a pack
+   and then *renders the assessment*. No install, no terminal, no dependencies, and no
+   network at any point: save it to a USB stick, double-click it, and it works from
+   `file://` on a machine that has never been online. This is what to hand an auditor or a
+   CAB. Its whole source is readable with View Source, and its own SHA-256 is published in
+   [`verify.html.sha256`](verify.html.sha256).
 1. **[`spec/spec-v0.1.md`](spec/spec-v0.1.md)** — the open specification of the pack
    format: canonical JSON, the content hash, the domain-separated Ed25519 signature
    envelope, the frozen-inputs model, the signed zip manifest, and the evidence-class
@@ -18,11 +24,13 @@ at all**:
 2. **[`verifier/`](verifier/)** — a single-file, dependency-light **reference offline
    verifier** (Python + `cryptography`). It re-derives every hash and checks every
    signature independently of the server.
-3. **[`verifier-go/`](verifier-go/)** — a **second, independent** verifier in Go (standard
-   library only, a single static binary — ideal for an air-gapped auditor). It agrees with
-   the Python verifier *byte-for-byte* on the same golden vector. Two independent
-   implementations agreeing is the strongest proof the format is genuinely open and not
-   vendor-locked — anyone can reimplement it in any language.
+3. **[`verifier-go/`](verifier-go/)** — a **third** independent verifier in Go (standard
+   library only, a single static binary — ideal for an air-gapped auditor).
+
+All three agree *byte-for-byte* on every committed vector, and `verifier/conformance.sh`
+proves it in one command. Three independent implementations, in three languages, agreeing
+is the strongest evidence the format is genuinely open and not vendor-locked — and one of
+them is auditable by View Source.
 
 New to this? **[`AUDITOR_GUIDE.md`](AUDITOR_GUIDE.md)** is a one-page "verify it yourself"
 guide for auditors and conformity-assessment bodies.
@@ -36,7 +44,14 @@ whose numbers you can recompute from the frozen inputs — that is evidence you 
 behind in front of a regulator. Sentari would rather the format be a **shared standard**
 than a proprietary claim.
 
-## Verify a pack in three commands
+## Verify a pack
+
+**Without installing anything:** open [`verify.html`](verify.html) and drop the file in. It
+checks the file on your own machine and then renders the assessment — what is compliant,
+what needs remediation, and the source records behind each result — and prints as a
+document for an evidence file.
+
+**From a terminal:**
 
 ```bash
 pip install -r verifier/requirements.txt        # just 'cryptography'
@@ -86,8 +101,13 @@ mutation matrix a conformant verifier must catch, and a reimplementer's checklis
 whole thing — both verifiers, every vector, plus tamper detection — in one command:
 
 ```bash
-verifier/conformance.sh      # builds the Go binary, runs all checks, prints PASS/FAIL
+verifier/conformance.sh      # all three verifiers, every vector, prints PASS/FAIL
 ```
+
+A deeper cross-check, for anyone changing a verification core: [`verifier-web/differential.mjs`](verifier-web/differential.mjs) mutates and deletes
+every field of every committed artifact in turn and requires the browser and Python
+verifiers to return the *same* verdict on all of them — not merely the right verdict on
+the curated cases.
 
 ## Status
 
