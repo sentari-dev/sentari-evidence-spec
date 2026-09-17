@@ -1721,7 +1721,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         const ok = C.verdictOf(r2) === 'verified' &&
           currentAnchor && currentAnchor === sig2.key_id &&
           !incompleteReason(r2, sig2);
-        if (ok && pinExpanded) {
+        // Re-render whenever it has become good. The guard used to require
+        // pinExpanded, which starts false, so the collapse could never fire.
+        if (ok && !document.querySelector('.pinrow-done')) {
           pinExpanded = false;
           renderTrust(r2, current.obj);
         }
