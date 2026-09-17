@@ -120,6 +120,10 @@ h1 { font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 6
 .v-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
 .pinrow { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
   padding: 16px; margin: 0 0 24px; }
+.pinrow-done { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  font-size: 14px; color: var(--ok-fg); background: var(--ok-bg);
+  border-color: var(--ok-line); padding: 10px 16px; }
+.pinrow-done .chip { margin-left: auto; }
 .pinrow label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
 .pinrow .explain { font-size: 13px; color: var(--ink-2); margin: 0 0 12px; }
 .pinfield { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -170,10 +174,14 @@ details.vdetails > summary:hover { text-decoration: underline; }
 .index a { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
   padding: 3px 8px; border-radius: 5px; text-decoration: none; border: 1px solid;
   color: inherit; }
-.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
-.filters button { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px;
-  border-radius: 999px; border: 1px solid var(--rule-2); background: var(--surface);
-  color: var(--ink-2); cursor: pointer; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 16px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip, .filters button { font: inherit; font-size: 13px; font-weight: 600;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--rule-2);
+  background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.chip { margin-left: auto; }
+.chip:hover, .filters button:hover { background: #E7EBF0; }
 .filters button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy);
   color: #fff; }
 
@@ -226,17 +234,24 @@ details.sec-d > .body { padding: 16px 0 24px; }
    as the narrow fallback; the full title is in the expanded body and in print. */
 @media (min-width: 760px) {
   .ctrl > summary { display: grid; align-items: center; gap: 12px;
+    grid-template-columns: 132px 96px minmax(0, 1fr) max-content 12px; }
+  /* The priority track is only reserved when some control actually has one --
+     otherwise every row paid 90px for an empty cell. */
+  #report.has-prio .ctrl > summary {
     grid-template-columns: 132px 96px 78px minmax(0, 1fr) max-content 12px; }
-  .ctrl-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Two lines, not an ellipsis: real control titles run 60-110 characters and
+     many share an opening clause, so truncating at ~42 makes neighbouring
+     controls read identically. */
+  .ctrl-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; white-space: normal; }
   .ctrl-act { justify-self: end; }
   .ctrl > summary::after { margin-left: 0; }
 }
-.prio.empty { border: 0; padding: 0; }
 .filterstate { font-size: 14px; background: var(--field); border: 1px solid var(--rule);
   border-radius: 8px; padding: 10px 14px; margin: 0 0 16px;
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .filterstate button { padding: 4px 12px; font-size: 13px; }
-#expandall { margin-left: auto; }
+
 .ctrl-act { font-size: 13px; font-weight: 600; }
 .a-non_compliant { color: var(--bad-fg); } .a-at_risk { color: var(--warn-fg); }
 .a-not_assessed { color: var(--na-fg); } .a-compliant { color: var(--ok-fg); }
@@ -251,6 +266,11 @@ details.sec-d > .body { padding: 16px 0 24px; }
 .st-at_risk { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
 .st-non_compliant { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
 .st-not_assessed { background: var(--na-bg); color: var(--na-fg); border-color: var(--na-line); }
+.st-unknown { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.tile-unknown b { color: var(--warn-fg); }
+.bar .b-unknown { background: var(--warn-fg); }
+.ctrl-unknown { border-left-color: var(--warn-fg); }
+.a-unknown { color: var(--warn-fg); }
 
 /* ---- evidence + source records ---- */
 details.refs { margin-top: 12px; }
@@ -304,7 +324,7 @@ table.rec th, table.rec td { white-space: nowrap; }
   @page { size: A4; margin: 18mm 16mm 20mm 20mm; }
   body { background: #fff; font-size: 10.5pt; line-height: 1.45; }
   .wrap { max-width: none; padding: 0; }
-  .noprint, #drop, .steps, .filters, .foot, .pinrow, .filebar, .busy,
+  .noprint, #drop, .steps, .filters, .toolbar, .foot, .pinrow, .filebar, .busy,
   #dragveil, .rowfilter, .index { display: none !important; }
   .print-head { display: block; border-bottom: 2pt solid #1F4E79;
     padding-bottom: 8pt; margin-bottom: 14pt; }
@@ -326,6 +346,10 @@ table.rec th, table.rec td { white-space: nowrap; }
   /* table-layout:fixed does nothing while width is auto -- the table then
      runs off the sheet edge, which looks exactly like clipping to the reader. */
   table.rec { width: 100% !important; }
+  /* A4 falls to the flex fallback, but a landscape or A3 sheet would engage
+     the grid and print an ellipsised title into an evidence file. Explicit. */
+  .ctrl-title { white-space: normal !important; overflow: visible !important;
+    text-overflow: clip; -webkit-line-clamp: none; display: block; }
   table.rec, table.rec th, table.rec td { white-space: normal !important;
     overflow-wrap: anywhere; word-break: break-word; }
   thead { display: table-header-group; }
@@ -406,6 +430,10 @@ table.rec th, table.rec td { white-space: nowrap; }
   <div class="print-head" id="print-head"></div>
   <div id="trust"></div>
   <div id="report"></div>
+  <!-- The six checks are the assurance statement, and the reason the paper is
+       worth filing -- but they must not LEAD it. margin-top does not reorder
+       anything, so they get their own container after the assessment. -->
+  <div id="assurance"></div>
 </div>
 
 <div class="foot noprint">
@@ -1006,7 +1034,7 @@ const EvidenceCore = (() => {
       manifest_valid: null,
       key_id_matches_material: null,
       key_id_matches_anchor: null,
-      per_source: {},
+      per_source: bare(),
       notes: [],
       kind: null,          // 'pack' | 'SBOM' | 'VEX'
       layer2_na: false,    // §12.6.5: "N/A for this class", never "skipped"
@@ -1058,15 +1086,18 @@ const EvidenceCore = (() => {
    */
   function checkSigFields(r, sig, expectedContentHash, expectedCtx) {
     const notes = [];
-    if (sig.algorithm !== undefined && sig.algorithm !== SIGNING_ALGORITHM) {
+    // `== null` deliberately, matching the Python reference's `is not None`:
+    // a JSON null counts as ABSENT, not as "present and wrong". Treating it
+    // as a mismatch split the two verifiers on `"algorithm": null`.
+    if (sig.algorithm != null && sig.algorithm !== SIGNING_ALGORITHM) {
       notes.push('signature.algorithm=' + JSON.stringify(sig.algorithm) +
         ' (expected ' + JSON.stringify(SIGNING_ALGORITHM) + ')');
     }
-    if (expectedCtx !== null && sig.context !== undefined && sig.context !== expectedCtx) {
+    if (expectedCtx !== null && sig.context != null && sig.context !== expectedCtx) {
       notes.push('signature.context=' + JSON.stringify(sig.context) +
         ' (expected ' + JSON.stringify(expectedCtx) + ')');
     }
-    if (expectedContentHash !== null && sig.content_sha256 !== undefined &&
+    if (expectedContentHash !== null && sig.content_sha256 != null &&
         sig.content_sha256 !== expectedContentHash) {
       notes.push('signature.content_sha256 disagrees with the payload');
     }
@@ -1303,7 +1334,11 @@ const EvidenceCore = (() => {
       const r = newResult();
       r.kind = 'unknown';
       r.payload_intact = false;
-      r.notes.push(`unknown signature context "${ctx}" — refusing to accept an unrecognised format`);
+      // Same reason as the key_id note: interpolating a non-string here
+      // throws on a null-prototype value and the verdict escapes as a crash.
+      const shownCtx = typeof ctx === 'string' ? ctx : '(not a string)';
+      r.notes.push('unknown signature context "' + shownCtx +
+        '" — refusing to accept an unrecognised format');
       return r;
     }
     // A pack relabelled with an artifact ctx (or vice-versa) must fail: the
@@ -1355,6 +1390,23 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   const C = EvidenceCore;
   const $ = (id) => document.getElementById(id);
 
+  /* THE RULE, because this bug has now been found three times in three
+     different places: NOTHING from an artifact may be coerced to a string
+     implicitly. Every parsed object has a null prototype, so String(o),
+     `${o}`, o + '' and map[o] all throw "Cannot convert object to primitive
+     value" -- and a throw out of the render layer means the auditor is shown
+     "could not be read" for a file the core already judged TAMPERED. A hostile
+     artifact must never get to choose which of those two it is called.
+     Use str() for values and esc() for anything reaching the DOM. */
+  const str = (v) => {
+    if (typeof v === 'string') return v;
+    if (v === undefined || v === null) return '';
+    if (typeof v === 'object') {
+      try { return JSON.stringify(v); } catch (_e) { return '[unrenderable value]'; }
+    }
+    return String(v);
+  };
+
   /* Everything rendered comes from an untrusted artifact — that is the whole
      purpose of this page — so this must survive a field being an object, or a
      null-prototype value, where a string was expected. */
@@ -1381,12 +1433,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   const STATUS_LABELS = table({
     compliant: 'Compliant', at_risk: 'At risk',
     non_compliant: 'Non-compliant', not_assessed: 'Not assessed',
+    unknown: 'Unrecognised',
   });
   /* A glyph on every status, so a greyscale office printer still carries the
      meaning that colour carries on screen. */
   const STATUS_GLYPH = table({
     compliant: '✓', at_risk: '!',
-    non_compliant: '✕', not_assessed: '–',
+    non_compliant: '✕', not_assessed: '–', unknown: '?',
   });
   const STATUS_ORDER = ['non_compliant', 'at_risk', 'not_assessed', 'compliant'];
   /* What the reader must DO about it. A status word alone does not tell a
@@ -1396,6 +1449,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     at_risk: 'Requires attention',
     not_assessed: 'Assess manually',
     compliant: 'Evidenced',
+    unknown: 'Status not recognised',
   });
   /* Self-explaining labels. "Derived" means nothing to a first-time reader. */
   /* Two different facts, so they must not read as one. `basis` is HOW the
@@ -1488,6 +1542,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
   let current = null;            // { obj, extras, members, result, fileName }
   let currentAnchor = '';
+  let pinExpanded = false;
   let statusFilter = 'all';
 
   /* The pack states its own scope. Hard-coding "all devices in the estate"
@@ -1499,17 +1554,19 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const k = sc && typeof sc.kind === 'string' ? sc.kind : '';
     if (k === 'fleet') return 'All devices in the estate';
     if (k === 'device') {
-      return 'One device: ' + String(sc.device_id || sc.hostname || 'unnamed');
+      return 'One device: ' + (str(sc.device_id) || str(sc.hostname) || 'unnamed');
     }
     if (k === 'workspace') {
-      return 'Workspace: ' + String(sc.name || sc.workspace_id || 'unnamed');
+      return 'Workspace: ' + (str(sc.name) || str(sc.workspace_id) || 'unnamed');
     }
     return k ? 'Scope: ' + k : 'Scope not stated in this pack';
   };
 
   const fmtDate = (iso) => {
+    // new Date(o) coerces, so guard before touching it at all.
+    if (typeof iso !== 'string' && typeof iso !== 'number') return str(iso);
     const d = new Date(iso);
-    if (isNaN(d.getTime())) return String(iso === undefined ? '' : iso);
+    if (isNaN(d.getTime())) return str(iso);
     const date = d.toLocaleDateString('en-GB',
       { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
     const time = d.toLocaleTimeString('en-GB',
@@ -1526,14 +1583,17 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
      result, and the printed record must say what was not checked: deleting
      one file from a bundle must not buy a green tag. */
   function incompleteReason(r, sig) {
+    // Checked FIRST: applyManifest runs for every bundle, so a signed SBOM
+    // shipped with an unsigned file list hit the same hole this closed for
+    // packs, one branch over.
+    if (r.hadManifest && r.manifest_valid === null) {
+      return 'the bundle\u2019s file list is not signed, so the set of files in it ' +
+        'could not be trusted';
+    }
     if (r.kind !== 'pack') return '';
     if (r.frozen_inputs_valid === null && typeof sig.frozen_inputs_sha256 === 'string') {
       return 'the source records this report was computed from were not included ' +
         'in the file, so the figures could not be checked against them';
-    }
-    if (r.hadManifest && r.manifest_valid === null) {
-      return 'the bundle\u2019s file list is not signed, so the set of files in it ' +
-        'could not be trusted';
     }
     return '';
   }
@@ -1588,7 +1648,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     // "internally consistent" and "authentic".
     const pinState = pinPill(r, matches, pinned);
 
-    const pinBlock =
+    // Once the fingerprint matches, this block has done its job -- it should
+    // not keep ~200px of the fold on every subsequent scroll of a green
+    // document, which is the state an assessor spends real time in.
+    const pinBlock = (v === 'verified' && matches && !gap && !pinExpanded)
+      ? '<div class="pinrow pinrow-done noprint"><span>Signed by <span class="mono">' +
+        esc(tail ? '\u2026' + tail : kid) + '</span> \u00b7 \u2713 matches the ' +
+        'fingerprint you pinned</span><button type="button" class="chip" ' +
+        'id="changepin">Change</button></div>'
+      :
       '<div class="pinrow noprint"><label for="anchor">Confirm who signed it</label>' +
       '<p class="explain">Checking the signature proves the file has not been ' +
       'changed. It does <strong>not</strong> prove who produced it. Paste the ' +
@@ -1633,13 +1701,45 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       notes += '<p>' + r.notes.map((n) => '&middot; ' + esc(n)).join('<br>') + '</p>';
     }
 
-    $('trust').innerHTML = head + pinBlock +
+    $('trust').innerHTML = head + pinBlock;
+    $('assurance').innerHTML =
       '<details class="vdetails"><summary>What exactly was checked</summary>' +
       '<div class="card"><ul class="checks">' + checks + '</ul>' +
       '<div class="legend">' + notes + '</div></div></details>';
 
     const input = $('anchor');
-    input.addEventListener('input', onAnchorInput);
+    if (input) {
+      input.addEventListener('input', onAnchorInput);
+      // Collapse on `change` (blur or Enter), never on `input`: rebuilding the
+      // block mid-keystroke would yank the caret out of the field the user is
+      // still typing in. So it stands down once they move on.
+      input.addEventListener('change', () => {
+        if (!current) return;
+        const r2 = current.result;
+        const sig2 = (current.obj && (current.obj.signature ||
+          (current.obj.payload && current.obj.payload.signature))) || {};
+        const ok = C.verdictOf(r2) === 'verified' &&
+          currentAnchor && currentAnchor === sig2.key_id &&
+          !incompleteReason(r2, sig2);
+        if (ok && pinExpanded) {
+          pinExpanded = false;
+          renderTrust(r2, current.obj);
+        }
+      });
+    }
+    const change = $('changepin');
+    if (change) {
+      change.addEventListener('click', () => {
+        pinExpanded = true;
+        renderTrust(r, obj);
+        // After innerHTML the node is new; focus on the next frame so the
+        // browser has laid it out.
+        requestAnimationFrame(() => {
+          const el = $('anchor');
+          if (el) el.focus();
+        });
+      });
+    }
   }
 
   /* Comparing a pinned fingerprint to the file's key id is a STRING compare.
@@ -1659,6 +1759,18 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const v = C.verdictOf(r);
     const matches = currentAnchor && kid && currentAnchor === kid;
     $('pinstate').innerHTML = pinPill(r, matches, currentAnchor);
+    // The printed identity block states which fingerprint was pinned and the
+    // result; it must not still say "NOT confirmed" while the screen says
+    // Verified. The paper is the artifact of record.
+    if (current) {
+      if (r.kind === 'pack') {
+        const pl = (current.obj.payload && typeof current.obj.payload === 'object')
+          ? current.obj.payload : current.obj;
+        renderPrintHead(pl, r, current.obj);
+      } else if (r.kind === 'SBOM' || r.kind === 'VEX') {
+        renderDocPrintHead(current.obj, r);
+      }
+    }
 
     // Only the headline band changes; the input keeps focus and caret because
     // we never replace it.
@@ -1686,17 +1798,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   }
 
   /* ---- one control ------------------------------------------------------ */
-  function controlBlock(c, graded) {
+  function controlBlock(c, graded, anyPrio) {
     const st = safeStatus(c.status);
-    const id = 'ctrl-' + String(
-      (typeof c.id === 'string' && c.id) ||
-      (typeof c.article_ref === 'string' && c.article_ref) || '').replace(/[^\w.-]/g, '');
+    const id = 'ctrl-' + (str(c.id) || str(c.article_ref)).replace(/[^\w.-]/g, '');
     let h = '<details class="ctrl ctrl-' + esc(st) + '" id="' + esc(id) +
       '" data-status="' + esc(st) + '">';
     // "ID.RA-1 (Important)" is an identifier AND a priority glued together.
     // The priority is a word a compliance officer acts on, so it does not
     // belong inside a monospace identifier run.
-    const refRaw = String(c.article_ref === undefined ? '' : c.article_ref);
+    const refRaw = str(c.article_ref);
     const m = refRaw.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
     const ref = m ? m[1] : refRaw;
     const prio = m ? m[2] : '';
@@ -1704,7 +1814,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       esc(pick(STATUS_GLYPH, st, '?')) + ' ' +
       esc(pick(STATUS_LABELS, st, 'Unrecognised status')) + '</span>' +
       '<span class="ctrl-ref">' + esc(ref) + '</span>' +
-      '<span class="prio' + (prio ? '' : ' empty') + '">' + esc(prio) + '</span>' +
+      (anyPrio ? '<span class="prio">' + esc(prio) + '</span>' : '') +
       '<span class="ctrl-title">' + esc(c.title) + '</span>' +
       '<span class="ctrl-act a-' + esc(st) + '">' + esc(pick(STATUS_ACTION, st, '')) +
       '</span></summary><div class="body">';
@@ -1753,6 +1863,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       counts[k] = (counts[k] || 0) + 1;
     });
     const graded = controls.some((c) => c.evidence_class);
+    const anyPrio = controls.some((c) => /\([^)]+\)\s*$/.test(str(c.article_ref)));
     const by = (st) => controls.filter((c) => safeStatus(c.status) === st);
     const total = controls.length;
     const bad = counts.non_compliant || 0;
@@ -1781,14 +1892,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     h += '<p class="headline">' + esc(headline) + '</p>';
 
     // Proportion bar + counts.
-    const segs = STATUS_ORDER.filter((s) => counts[s])
+    const shownStatuses = counts.unknown
+      ? STATUS_ORDER.concat(['unknown']) : STATUS_ORDER;
+    const segs = shownStatuses.filter((s) => counts[s])
       .map((s) => '<i class="b-' + s + '" style="flex:' + counts[s] + '"></i>').join('');
-    const aria = STATUS_ORDER.map((s) => (counts[s] || 0) + ' ' + STATUS_LABELS[s]).join(', ');
+    const aria = shownStatuses.map((s) => (counts[s] || 0) + ' ' + STATUS_LABELS[s]).join(', ');
     if (total) {
       h += '<div class="bar" role="img" aria-label="' + esc(aria) + '">' + segs + '</div>';
     }
     h += '<div class="tiles">';
-    STATUS_ORDER.forEach((s) => {
+    shownStatuses.forEach((s) => {
       h += '<div class="tile tile-' + s + '"><b>' + (counts[s] || 0) + '</b>' +
         '<span>' + STATUS_LABELS[s] + '</span></div>';
     });
@@ -1808,26 +1921,33 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     if (total) {
       h += '<h2 class="sec">All ' + total + ' assessed controls</h2><div class="index">';
       controls.forEach((c) => {
-        const id = 'ctrl-' + String(
-          (typeof c.id === 'string' && c.id) ||
-          (typeof c.article_ref === 'string' && c.article_ref) || '').replace(/[^\w.-]/g, '');
-        const r0 = String(c.article_ref === undefined ? '' : c.article_ref);
+        const id = 'ctrl-' + (str(c.id) || str(c.article_ref)).replace(/[^\w.-]/g, '');
+        const r0 = str(c.article_ref);
         const mm = r0.match(/^(.*?)\s*\([^)]+\)\s*$/);
         h += '<a href="#' + esc(id) + '" class="st st-' + esc(safeStatus(c.status)) + '">' +
           esc(mm ? mm[1] : r0) + '</a>';
       });
       h += '</div>';
-      h += '<div class="filters noprint" role="group" aria-label="Filter controls by status">';
+      h += '<div class="toolbar noprint">';
+      h += '<div class="filters" role="group" aria-label="Filter controls by status">';
       h += '<button type="button" data-filter="all" aria-pressed="true">All ' + total + '</button>';
-      STATUS_ORDER.forEach((s) => {
+      shownStatuses.forEach((s) => {
         if (counts[s]) {
           h += '<button type="button" data-filter="' + s + '" aria-pressed="false">' +
             STATUS_LABELS[s] + ' ' + counts[s] + '</button>';
         }
       });
-      h += '<button type="button" class="btn btn-quiet" id="expandall" ' +
+      // Close the filter GROUP before the expand button: it is not a filter,
+      // and inside role="group" aria-label="Filter controls by status" a
+      // screen reader announces it as one.
+      h += '</div>';
+      h += '<button type="button" class="chip" id="expandall" ' +
         'aria-pressed="false">Expand all</button>';
-      h += '</div><p id="filterstate" class="filterstate hidden noprint"></p>';
+      h += '</div>';
+      // noprint is deliberate: beforeprint restores the FULL document, so a
+      // line reading "Showing 15 of 60" would contradict the paper in the
+      // reader's hand. The screen states the filter; paper states everything.
+      h += '<p id="filterstate" class="filterstate hidden noprint"></p>';
     }
 
     const attention = by('non_compliant').concat(by('at_risk')).concat(by('unknown'));
@@ -1835,19 +1955,19 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     h += '<h2 class="sec">Needs attention' +
       '<span class="cnt cnt-non_compliant">' + attention.length + '</span></h2>';
     h += (attention.length
-      ? attention.map((c) => controlBlock(c, graded)).join('')
+      ? attention.map((c) => controlBlock(c, graded, anyPrio)).join('')
       : '<div class="card sub">No control came back non-compliant or at risk.</div>') + '</div>';
 
     const na = by('not_assessed');
     if (na.length) {
       h += section('no-evidence', 'No evidence either way', na.length, 'not_assessed',
-        na.map((c) => controlBlock(c, graded)).join(''),
+        na.map((c) => controlBlock(c, graded, anyPrio)).join(''),
         'assessed manually, or outside what Sentari can see');
     }
     const ok = by('compliant');
     if (ok.length) {
       h += section('compliant', 'Evidenced compliant', ok.length, 'compliant',
-        ok.map((c) => controlBlock(c, graded)).join(''));
+        ok.map((c) => controlBlock(c, graded, anyPrio)).join(''));
     }
     const gaps = coverage.not_assessed_framework_refs || [];
     if (gaps.length) {
@@ -2086,10 +2206,17 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     $('filebar').classList.remove('hidden');
     $('filename').textContent = fileName || 'the file you opened';
     renderTrust(r, obj);
+    // The verdict is already decided and displayed. If rendering the REPORT
+    // fails on some hostile field, the auditor must still be told what the
+    // verdict was -- not handed "could not be read" for a file the core
+    // judged tampered.
+    try {
     if (r.kind === 'pack') {
       const payload = (obj.payload && typeof obj.payload === 'object') ? obj.payload : obj;
       const frozen = (extras && extras.frozenInputs) || obj.frozen_inputs;
       $('report').innerHTML = renderPack(payload) + renderFrozen(frozen, r);
+      $('report').classList.toggle('has-prio',
+        (payload.controls || []).some((c) => /\([^)]+\)\s*$/.test(str(c.article_ref))));
       renderPrintHead(payload, r, obj);
       wireReport(frozen);
     } else if (r.kind === 'SBOM' || r.kind === 'VEX') {
@@ -2098,6 +2225,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       wireReport(null);
     } else {
       $('report').innerHTML = '';
+    }
+    } catch (e) {
+      $('report').innerHTML = '<div class="card"><h2>The contents could not be ' +
+        'displayed.</h2><p class="prose">The verification result above still ' +
+        'stands \u2014 it was computed before this point. This file contains a ' +
+        'field this page cannot render, which is itself a reason to treat it ' +
+        'with suspicion.</p><details><summary class="sub">Technical detail' +
+        '</summary><p class="mono" style="margin:8px 0 0">' +
+        esc(e && e.message) + '</p></details></div>';
     }
     // A polite live region wrapping the whole report would read the entire
     // document aloud -- title, every tile, all sixty index chips, every row.
@@ -2131,6 +2267,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       risk + ' at risk.';
   }
 
+  let rowAnnounceTimer = null;
+
   function wireRowFilters() {
     document.querySelectorAll('input.rowfilter').forEach((inp) => {
       inp.addEventListener('input', () => {
@@ -2143,7 +2281,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
           tr.classList.toggle('hidden', !hit);
           if (hit) shown++;
         });
-        announce(shown + ' record(s) match.');
+        // Debounced: an `input` handler that announces on every keystroke
+        // queues one utterance per letter typed.
+        clearTimeout(rowAnnounceTimer);
+        rowAnnounceTimer = setTimeout(() => announce(shown + ' record(s) match.'), 400);
       });
     });
   }
@@ -2173,7 +2314,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         const open = ex.getAttribute('aria-pressed') !== 'true';
         ex.setAttribute('aria-pressed', String(open));
         ex.textContent = open ? 'Collapse all' : 'Expand all';
-        document.querySelectorAll('#report details.ctrl').forEach((d) => { d.open = open; });
+        // Sections too: opening 60 rows while 30 of them sit inside collapsed
+        // sections is not "expand all".
+        document.querySelectorAll('#report details.ctrl, #report details.sec-d')
+          .forEach((d) => { d.open = open; });
       });
     }
     // Following an index link must reveal the control even when its section
@@ -2302,9 +2446,18 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     try {
       const byName = Object.create(null);
       let zip = null;
+      // The same caps as readZip: the UI actively recommends the
+      // extracted-files form in three error messages, so it must not accept
+      // what the archive form refuses.
+      let picked = 0;
+      let bytesRead = 0;
       for (const f of files) {
-        if (/\.zip$/i.test(f.name)) zip = f;
-        else byName[f.name.replace(/^.*[\\/]/, '')] = new Uint8Array(await f.arrayBuffer());
+        if (/\.zip$/i.test(f.name)) { zip = f; continue; }
+        if (++picked > MAX_MEMBERS) throw new Error('Too many files selected');
+        if (f.size > MAX_MEMBER) throw new Error('"' + f.name + '" is implausibly large');
+        bytesRead += f.size;
+        if (bytesRead > MAX_TOTAL) throw new Error('The selected files are implausibly large');
+        byName[f.name.replace(/^.*[\\/]/, '')] = new Uint8Array(await f.arrayBuffer());
       }
       if (zip) {
         try {
@@ -2401,24 +2554,24 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     }
     const files = (man.payload && man.payload.files) || [];
     for (const entry of files) {
-      const nm = entry && entry.name;
-      const body = members[nm];
+      const nm = str(entry && entry.name);
+      const body = nm ? members[nm] : undefined;
       if (body === undefined) {
         // A member the signed manifest lists but the bundle does not contain
         // has been REMOVED. Skipping it silently let an attacker delete
         // frozen_inputs.json and keep a clean result.
         ok = false;
-        r.notes.push('bundle member "' + String(nm) + '" is listed in the signed ' +
+        r.notes.push('bundle member "' + nm + '" is listed in the signed ' +
           'manifest but missing from the bundle');
         continue;
       }
       if (C.sha256Hex(body) !== entry.sha256) {
         ok = false;
-        r.notes.push('bundle member "' + String(nm) + '" does not match the signed manifest');
+        r.notes.push('bundle member "' + nm + '" does not match the signed manifest');
       }
     }
     for (const need of ['evidence.json', 'signature.json']) {
-      if (members[need] && !files.some((f) => f && f.name === need)) {
+      if (members[need] && !files.some((f) => f && str(f.name) === need)) {
         ok = false;
         r.notes.push(need + ' is present but not listed in the signed manifest');
       }
@@ -2555,24 +2708,49 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
   // Paper must be complete: open every disclosure and expand every truncated
   // record table before printing, then put it all back.
+  /* Paper must always be the WHOLE document. A screen filter is a reading aid;
+     if it reached the printout, an assessor could filter to Compliant, press
+     Print, and file an evidence document containing the compliant controls and
+     no sign that thirty non-compliant ones exist. Same for a per-source record
+     filter inside the section whose stated purpose is "the raw evidence every
+     result was computed from". So everything hidden for reading is restored
+     before printing, and put back afterwards. */
   window.addEventListener('beforeprint', () => {
     document.querySelectorAll('button.showall').forEach((b) => b.click());
     document.querySelectorAll('details').forEach((d) => {
       d.dataset.wasOpen = String(d.open);
       d.open = true;
     });
-    document.querySelectorAll('.ctrl.hidden').forEach((el) => {
+    // Controls AND the sections that contain them: un-hiding a control inside
+    // a display:none section still prints nothing.
+    document.querySelectorAll('.ctrl.hidden, [data-section].hidden').forEach((el) => {
       el.classList.remove('hidden');
       el.dataset.unhid = '1';
+    });
+    document.querySelectorAll('input.rowfilter').forEach((inp) => {
+      if (!inp.value) return;
+      inp.dataset.wasValue = inp.value;
+      inp.value = '';
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.querySelectorAll('tr.hidden').forEach((tr) => {
+      tr.classList.remove('hidden');
+      tr.dataset.unhid = '1';
     });
   });
   window.addEventListener('afterprint', () => {
     document.querySelectorAll('details').forEach((d) => {
       if (d.dataset.wasOpen !== undefined) d.open = d.dataset.wasOpen === 'true';
     });
-    document.querySelectorAll('.ctrl[data-unhid]').forEach((el) => {
+    document.querySelectorAll('[data-unhid]').forEach((el) => {
       el.classList.add('hidden');
       delete el.dataset.unhid;
+    });
+    document.querySelectorAll('input.rowfilter').forEach((inp) => {
+      if (inp.dataset.wasValue === undefined) return;
+      inp.value = inp.dataset.wasValue;
+      delete inp.dataset.wasValue;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
     });
   });
 })();

@@ -48,12 +48,20 @@ function pyVerdict(obj, anchor) {
   }
 }
 
-function jsVerdict(obj, anchor) {
+let jsThrew = [];
+
+function jsVerdict(obj, anchor, label) {
   try {
     // Round-trip through text so the JS side parses exactly what Python read.
     return C.verdictOf(C.verifyJson(C.parseJson(JSON.stringify(obj)), anchor || null));
   } catch (e) {
-    return 'error';
+    // NOT collapsed to a verdict. The core's contract is that a corrupt
+    // artifact produces verified/tampered/key_unknown -- never an exception.
+    // Mapping a throw to 'error' here (and Python's exit 4 to 'error' too)
+    // meant a crash on BOTH sides was scored as agreement, which is how a
+    // whole class of type-coercion bugs survived a green run.
+    jsThrew.push((label || '?') + ': ' + e.message);
+    return 'THREW: ' + e.message;
   }
 }
 
@@ -96,8 +104,8 @@ for (const rel of VECTORS) {
   const original = JSON.parse(readFileSync(join(REPO, rel), 'utf8'));
   const all = paths(original);
   // Sample across the whole artifact rather than only the first fields.
-  const step = Math.max(1, Math.floor(all.length / 45));
-  const sample = all.filter((_, i) => i % step === 0).slice(0, 45);
+  const step = Math.max(1, Math.floor(all.length / 20));
+  const sample = all.filter((_, i) => i % step === 0).slice(0, 20);
 
   const cases = [];
   // Untouched, plus a wrong pin.
@@ -107,7 +115,7 @@ for (const rel of VECTORS) {
 
   for (const p of sample) {
     const v = getIn(original, p);
-    // mutate
+    // mutate within type
     let mutated;
     if (typeof v === 'string') mutated = v + 'X';
     else if (typeof v === 'number') mutated = v + 1;
@@ -118,6 +126,16 @@ for (const rel of VECTORS) {
     setIn(m, p, mutated);
     cases.push(['mutate:' + p.join('.'), m, null]);
 
+    // ...and substitute the TYPE. Every field is declared to be a string, a
+    // number or a boolean somewhere in the spec; handing the verifier an
+    // object or an array instead is the cheapest hostile input there is, and
+    // neither implementation had a row for it in the verdict table.
+    for (const swap of [{}, [], 0, true, null]) {
+      const t = JSON.parse(JSON.stringify(original));
+      setIn(t, p, swap);
+      cases.push(['typeswap:' + p.join('.') + '=' + JSON.stringify(swap), t, null]);
+    }
+
     // delete
     const d = JSON.parse(JSON.stringify(original));
     delIn(d, p);
@@ -125,7 +143,7 @@ for (const rel of VECTORS) {
   }
 
   for (const [label, obj, anchor] of cases) {
-    const js = jsVerdict(obj, anchor);
+    const js = jsVerdict(obj, anchor, rel.split('/').pop() + ' ' + label);
     const py = pyVerdict(obj, anchor);
     checked++;
     if (js !== py) disagreements.push({ rel, label, js, py });
@@ -134,11 +152,19 @@ for (const rel of VECTORS) {
 }
 
 console.log(`\n${checked} mutated artifacts driven through BOTH verifiers.`);
-if (!disagreements.length) {
-  console.log('NO DISAGREEMENTS — browser and Python verifiers returned identical verdicts.');
+if (jsThrew.length) {
+  console.log(`\n${jsThrew.length} case(s) made the BROWSER verifier THROW ` +
+    `instead of returning a verdict:`);
+  for (const t of jsThrew.slice(0, 15)) console.log('  ' + t);
+}
+if (!disagreements.length && !jsThrew.length) {
+  console.log('NO DISAGREEMENTS — browser and Python verifiers returned identical ' +
+    'verdicts, and neither threw.');
 } else {
   console.log(`${disagreements.length} DISAGREEMENT(S):`);
   for (const d of disagreements.slice(0, 25)) {
     console.log(`  ${d.rel.split('/').pop()}  ${d.label}\n      js=${d.js}  python=${d.py}`);
   }
 }
+
+process.exit(disagreements.length || jsThrew.length ? 1 : 0);

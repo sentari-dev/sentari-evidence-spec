@@ -545,7 +545,10 @@ def verify_pack(
     # relabelled document, lacking a content_sha256 field, additionally fails
     # Layer 1) — an unknown format is never silently accepted.
     block_ctx = signature.get("context") if isinstance(signature, dict) else None
-    if block_ctx in ARTIFACT_CONTEXTS:
+    # ``in`` on a dict/list value raises TypeError: unhashable type. A field of
+    # the wrong JSON type is a hostile or corrupt artifact, and this tool's
+    # contract is that such a thing gets a VERDICT, never a traceback.
+    if isinstance(block_ctx, str) and block_ctx in ARTIFACT_CONTEXTS:
         return _verify_document(
             payload,
             signature,
@@ -675,14 +678,21 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"could not read pack: {e}\n")
         return 4
 
-    r = verify_pack(
-        payload,
-        signature,
-        frozen,
-        manifest_ctx=manifest_ctx,
-        pubkey_b64=args.pubkey,
-        expected_key_id=args.expected_key_id,
-    )
+    try:
+        r = verify_pack(
+            payload,
+            signature,
+            frozen,
+            manifest_ctx=manifest_ctx,
+            pubkey_b64=args.pubkey,
+            expected_key_id=args.expected_key_id,
+        )
+    except Exception as e:  # noqa: BLE001 - a verdict, never a traceback
+        # An artifact that makes the verifier throw must still produce one of
+        # the documented exit codes. Anything else is an unreadable artifact
+        # (4), not a silent success.
+        sys.stderr.write(f"could not verify pack: {type(e).__name__}: {e}\n")
+        return 4
     verdict = r.verdict
 
     if args.json:
