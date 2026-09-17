@@ -36,7 +36,8 @@
  * instruments — so they have to actually be used.
  *
  * Type scale    12 / 13 / 16 / 20 / 26 / 34 / 44
- * Spacing scale 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64
+ * Spacing scale 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64, with 2/3/6/10/14/20 used
+ *               for control-scale detail (chip padding, hairline offsets).
  * =========================================================================== */
 :root {
   --bg: #F4F6F8; --surface: #FFFFFF; --field: #F7F9FB;
@@ -120,9 +121,14 @@ h1 { font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 6
 .v-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
 .pinrow { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
   padding: 16px; margin: 0 0 24px; }
+/* Deliberately NOT the green of the verdict band above it: two bars in the
+   same three tokens read as equal weight, and the reader cannot tell which is
+   the verdict and which is the receipt. The pin has done its job -- it
+   recedes, and only the tick stays green. */
 .pinrow-done { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  font-size: 14px; color: var(--ok-fg); background: var(--ok-bg);
-  border-color: var(--ok-line); padding: 10px 16px; }
+  font-size: 14px; color: var(--ink-2); background: var(--surface);
+  border-color: var(--rule); padding: 10px 16px; }
+.pinrow-done .ok { color: var(--ok-line); font-weight: 700; }
 .pinrow-done .chip { margin-left: auto; }
 .pinrow label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
 .pinrow .explain { font-size: 13px; color: var(--ink-2); margin: 0 0 12px; }
@@ -388,7 +394,8 @@ table.rec th, table.rec td { white-space: nowrap; }
         <code>.json</code> files from one you extracted.</li>
     <li>This page re-checks, on this machine, that nothing in it has changed
         since it was signed.</li>
-    <li>You read the assessment, and can print it for your file.</li>
+    <li>You read the assessment, and can print it as a complete,
+        self&#8209;identifying document for your file.</li>
   </ol>
   <div id="drop">
     <span class="big">Drop the file here</span>
@@ -1653,8 +1660,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     // document, which is the state an assessor spends real time in.
     const pinBlock = (v === 'verified' && matches && !gap && !pinExpanded)
       ? '<div class="pinrow pinrow-done noprint"><span>Signed by <span class="mono">' +
-        esc(tail ? '\u2026' + tail : kid) + '</span> \u00b7 \u2713 matches the ' +
-        'fingerprint you pinned</span><button type="button" class="chip" ' +
+        esc(tail ? '\u2026' + tail : kid) + '</span> \u00b7 <span class="ok">\u2713</span> ' +
+        'matches the fingerprint you pinned</span><button type="button" class="chip" ' +
         'id="changepin">Change</button></div>'
       :
       '<div class="pinrow noprint"><label for="anchor">Confirm who signed it</label>' +
@@ -1701,11 +1708,25 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       notes += '<p>' + r.notes.map((n) => '&middot; ' + esc(n)).join('<br>') + '</p>';
     }
 
-    $('trust').innerHTML = head + pinBlock;
-    $('assurance').innerHTML =
-      '<details class="vdetails"><summary>What exactly was checked</summary>' +
+    const assurance =
+      '<details class="vdetails"' + (v === 'verified' ? '' : ' open') +
+      '><summary>What exactly was checked</summary>' +
       '<div class="card"><ul class="checks">' + checks + '</ul>' +
       '<div class="legend">' + notes + '</div></div></details>';
+    // Where this goes depends on the verdict. After the assessment when the
+    // news is good -- it is an appendix. But when the page has just said
+    // "Altered, do not rely on this file", the reader's next question is
+    // WHICH check failed, and nothing below the wall matters anyway; making
+    // them scroll past the assessment they were told not to trust to find it
+    // is backwards. So in every non-verified state it sits under the wall,
+    // already open.
+    if (v === 'verified') {
+      $('trust').innerHTML = head + pinBlock;
+      $('assurance').innerHTML = assurance;
+    } else {
+      $('trust').innerHTML = head + assurance + pinBlock;
+      $('assurance').innerHTML = '';
+    }
 
     const input = $('anchor');
     if (input) {
@@ -2079,7 +2100,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       }
     }
     const shown = showAll ? rows : rows.slice(0, ROW_PAGE);
-    let h = '<div class="scroll"><table class="rec"><thead><tr>';
+    let h = '<div class="scroll" data-src="' + esc(name) + '"><table class="rec"><thead><tr>';
     cols.forEach((c) => { h += '<th>' + esc(label(c)) + '</th>'; });
     h += '</tr></thead><tbody>';
     shown.forEach((row) => {
@@ -2270,6 +2291,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   }
 
   let rowAnnounceTimer = null;
+  let printExpanded = [];
 
   function wireRowFilters() {
     document.querySelectorAll('input.rowfilter').forEach((inp) => {
@@ -2718,6 +2740,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
      result was computed from". So everything hidden for reading is restored
      before printing, and put back afterwards. */
   window.addEventListener('beforeprint', () => {
+    // Record which tables printing forced open, so they can be re-capped
+    // afterwards rather than staying fully rendered for the rest of the
+    // session.
+    printExpanded = [...document.querySelectorAll('button.showall')]
+      .map((b) => b.getAttribute('data-src'));
     document.querySelectorAll('button.showall').forEach((b) => b.click());
     document.querySelectorAll('details').forEach((d) => {
       d.dataset.wasOpen = String(d.open);
@@ -2739,6 +2766,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       tr.classList.remove('hidden');
       tr.dataset.unhid = '1';
     });
+    // Clearing the row filters above schedules a debounced announcement; the
+    // print dialog blocks, so it would fire at an arbitrary moment during or
+    // after printing.
+    clearTimeout(rowAnnounceTimer);
   });
   window.addEventListener('afterprint', () => {
     document.querySelectorAll('details').forEach((d) => {
@@ -2748,6 +2779,21 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       el.classList.add('hidden');
       delete el.dataset.unhid;
     });
+    for (const name of printExpanded) {
+      const holder = document.querySelector('.scroll[data-src="' + name + '"]');
+      const rows = ((current && current.extras && current.extras.frozenInputs &&
+        current.extras.frozenInputs.sources &&
+        current.extras.frozenInputs.sources[name]) ||
+        (current && current.obj && current.obj.frozen_inputs &&
+         current.obj.frozen_inputs.sources &&
+         current.obj.frozen_inputs.sources[name]) || {}).rows;
+      if (!holder || !Array.isArray(rows) || rows.length <= ROW_PAGE) continue;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = renderRows(name, rows);
+      holder.replaceWith(...wrap.childNodes);
+    }
+    printExpanded = [];
+    wireReport(null);
     document.querySelectorAll('input.rowfilter').forEach((inp) => {
       if (inp.dataset.wasValue === undefined) return;
       inp.value = inp.dataset.wasValue;
