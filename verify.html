@@ -25,198 +25,354 @@
   Apache-2.0. Read it, check it, reimplement it.
 -->
 <style>
-/* No web fonts: a font request is a network request. System stack only. */
+/* ===========================================================================
+ * No web fonts, ever: a font request is a network request, and this page
+ * makes none. That leaves scale, weight, rule work and restraint as the only
+ * instruments — so they have to actually be used.
+ *
+ * Type scale    12 / 13 / 16 / 20 / 26 / 34 / 44
+ * Spacing scale 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64
+ * =========================================================================== */
 :root {
-  --bg: #f7f8fa; --surface: #ffffff; --fg: #17202a; --fg-muted: #5b6672;
-  --hairline: #dde3ea; --accent: #1f4e79;
-  --ok-bg: #dcfce7; --ok-fg: #14532d; --ok-line: #4ade80;
-  --warn-bg: #fef9c3; --warn-fg: #713f12; --warn-line: #eab308;
-  --bad-bg: #fee2e2; --bad-fg: #7f1d1d; --bad-line: #f87171;
-  --na-bg: #f1f5f9; --na-fg: #475569; --na-line: #cbd5e1;
+  --bg: #F4F6F8; --surface: #FFFFFF; --field: #F7F9FB;
+  --ink: #141B22; --ink-2: #4A5563; --ink-3: #6B7480;
+  --rule: #D7DEE6; --rule-2: #9AA4B2;
+  --navy: #1F4E79; --navy-hi: #17395A;
+
+  /* Paper-toned, not dashboard-toned. Every line colour clears 3:1 on white
+     so it can carry meaning rather than decorate. */
+  --bad-bg: #FBEAE8; --bad-fg: #8C1D18; --bad-line: #B3261E;
+  --warn-bg: #FDF4DC; --warn-fg: #6B4A00; --warn-line: #A06800;
+  --ok-bg: #E8F2EB;  --ok-fg: #14532D;  --ok-line: #2E7D52;
+  --na-bg: #EEF1F4;  --na-fg: #3F4B5B;  --na-line: #8A94A3;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg);
-  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
         "Helvetica Neue", Arial, sans-serif; }
-.wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 64px; }
-h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.01em; }
-h2 { font-size: 17px; margin: 0 0 6px; letter-spacing: -0.01em; }
-h3 { font-size: 13px; margin: 20px 0 8px; color: var(--fg-muted);
-     text-transform: uppercase; letter-spacing: 0.06em; }
-p { margin: 0 0 10px; }
+.wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+p { margin: 0 0 12px; }
+.prose, .ctrl-sum, .callout p, .explain { max-width: 68ch; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px; overflow-wrap: anywhere; }
-.sub { color: var(--fg-muted); font-size: 13.5px; }
-.card { background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: 10px; padding: 16px 18px; margin: 0 0 14px; }
-.top { margin-bottom: 18px; }
+  font-size: 13px; overflow-wrap: anywhere; }
+.sub { color: var(--ink-2); font-size: 13px; }
 .hidden { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+:focus-visible { outline: 3px solid var(--navy); outline-offset: 2px; border-radius: 4px; }
 
-/* ---- drop zone ---- */
-#drop { border: 2px dashed var(--hairline); border-radius: 10px;
-  background: var(--surface); padding: 20px; text-align: center; cursor: pointer;
-  margin-top: 12px; }
-#drop.over { border-color: var(--accent); background: #eef4fa; }
-#drop strong { display: block; font-size: 15px; margin-bottom: 2px; }
-#drop input { display: none; }
-#parse-error { border-color: var(--bad-line); background: var(--bad-bg); }
+/* ---- masthead / empty state ---- */
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink-2); margin: 0 0 4px; font-weight: 600; }
+h1 { font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 640;
+  margin: 0 0 8px; }
+.lede { font-size: 20px; line-height: 1.45; color: var(--ink-2); max-width: 62ch;
+  margin: 0 0 24px; }
+.steps { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 24px; padding: 0;
+  list-style: none; counter-reset: s; }
+.steps li { flex: 1 1 220px; padding: 12px 16px 12px 44px; position: relative;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  font-size: 14px; line-height: 1.45; }
+.steps li::before { counter-increment: s; content: counter(s);
+  position: absolute; left: 14px; top: 12px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--navy); color: #fff; font-size: 12px;
+  font-weight: 700; display: grid; place-items: center; }
+#drop { border: 2px dashed var(--rule-2); border-radius: 12px; background: var(--field);
+  padding: 32px 24px; text-align: center; }
+#drop.over { border-color: var(--navy); background: #EAF1F8;
+  box-shadow: inset 0 0 0 4px rgba(31,78,121,.08); }
+#drop .big { display: block; font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.btn { font: inherit; font-size: 15px; font-weight: 600; padding: 10px 20px;
+  border-radius: 8px; border: 1px solid var(--navy); background: var(--navy);
+  color: #fff; cursor: pointer; }
+.btn:hover { background: var(--navy-hi); }
+.btn-quiet { background: var(--surface); color: var(--navy); }
+.btn-quiet:hover { background: #EAF1F8; }
+#file { position: absolute; width: 1px; height: 1px; opacity: 0;
+  clip-path: inset(50%); }
+#dragveil { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: rgba(31,78,121,.10); border: 4px dashed var(--navy);
+  font-size: 26px; font-weight: 640; color: var(--navy-hi); }
 
-/* ---- trust: a tag when fine, a wall when not ---- */
-.trustbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
-  padding: 2px 0 10px; }
-.verdict { border-radius: 10px; padding: 16px 18px; margin: 0 0 12px;
+/* ---- loaded header ---- */
+.filebar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 0 0 16px; margin: 0 0 24px; border-bottom: 1px solid var(--rule); }
+.filebar .name { font-size: 14px; color: var(--ink-2); }
+
+/* ---- trust ---- */
+.trust { display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 12px 16px; border-radius: 10px; border: 1px solid; margin: 0 0 8px; }
+.trust strong { font-size: 16px; }
+.trust .t-msg { font-size: 14px; flex: 1 1 320px; }
+.t-ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok-fg); }
+.t-warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-fg); }
+.verdict { border-radius: 10px; padding: 20px 24px; margin: 0 0 8px;
   border: 1px solid; border-left-width: 8px; }
-.verdict h2 { margin: 0 0 6px; font-size: 20px; }
-.verdict p { margin: 0; }
+.verdict h2 { margin: 0 0 8px; font-size: 26px; line-height: 1.2; letter-spacing: -.01em; }
+.verdict p { margin: 0; max-width: 68ch; }
 .v-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
 .v-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
-details.vdetails { margin: 0 0 20px; }
-details.vdetails > summary { cursor: pointer; font-size: 13px; color: var(--accent); }
-details.vdetails > .card { margin-top: 10px; }
-.pinlabel { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13.5px; }
-#anchor { width: 100%; padding: 8px 10px; border: 1px solid var(--hairline);
-  border-radius: 7px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.pinrow { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 16px; margin: 0 0 24px; }
+.pinrow label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.pinrow .explain { font-size: 13px; color: var(--ink-2); margin: 0 0 12px; }
+.pinfield { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+#anchor { flex: 1 1 380px; padding: 10px 12px; border: 1px solid var(--rule-2);
+  border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+details.vdetails { margin: 0 0 24px; }
+details.vdetails > summary { display: inline-block; cursor: pointer; font-size: 13px;
+  color: var(--navy); font-weight: 600; padding: 6px 0; }
+details.vdetails > summary:hover { text-decoration: underline; }
 .checks { list-style: none; margin: 0; padding: 0; }
-.checks li { display: flex; gap: 10px; align-items: baseline; padding: 8px 0;
-  border-top: 1px solid var(--hairline); }
+.checks li { display: flex; gap: 12px; align-items: baseline; padding: 8px 0;
+  border-top: 1px solid var(--rule); }
 .checks li:first-child { border-top: 0; }
 .mark { flex: 0 0 16px; font-weight: 700; text-align: center; }
-.m-ok { color: #15803d; } .m-bad { color: #b91c1c; } .m-na { color: #94a3b8; }
+.m-ok { color: var(--ok-line); } .m-bad { color: var(--bad-line); } .m-na { color: var(--ink-3); }
 .checks .what { flex: 1; font-size: 14px; }
-.checks .flag { color: var(--fg-muted); font-size: 11.5px; }
-.legend { font-size: 12.5px; color: var(--fg-muted); }
+.legend { font-size: 13px; color: var(--ink-2); }
 
-/* ---- pills ---- */
-.pill { display: inline-block; padding: 2px 10px; border-radius: 999px;
-  font-size: 12.5px; font-weight: 600; border: 1px solid; }
-.p-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
-.p-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
-.p-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
-.p-na { background: var(--na-bg); color: var(--na-fg); border-color: var(--na-line); }
+/* ---- document head ---- */
+.doc-title { font-size: 34px; line-height: 1.15; letter-spacing: -.02em; font-weight: 640;
+  margin: 0 0 4px; }
+.doc-meta { font-size: 13px; color: var(--ink-2); margin: 0 0 16px;
+  padding-bottom: 16px; border-bottom: 2px solid var(--navy); }
+.headline { font-size: 26px; line-height: 1.35; font-weight: 500; max-width: 42ch;
+  margin: 24px 0 16px; letter-spacing: -.01em; }
+.bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden;
+  margin: 0 0 16px; background: var(--na-bg); }
+.bar > i { display: block; }
+.bar .b-non_compliant { background: var(--bad-line); }
+.bar .b-at_risk { background: var(--warn-line); }
+.bar .b-not_assessed { background: var(--na-line); }
+.bar .b-compliant { background: var(--ok-line); }
+.tiles { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 24px; }
+.tile { flex: 1 1 130px; padding: 12px 16px; border: 1px solid var(--rule);
+  border-radius: 10px; background: var(--surface); }
+.tile b { display: block; font-size: 32px; line-height: 1.1; letter-spacing: -.02em; }
+.tile span { font-size: 13px; color: var(--ink-2); }
+.tile-non_compliant b { color: var(--bad-line); }
+.tile-at_risk b { color: var(--warn-line); }
+.tile-not_assessed b { color: var(--na-fg); }
+.tile-compliant b { color: var(--ok-line); }
+.callout { border-left: 4px solid var(--navy); background: #EDF2F7; padding: 16px 20px;
+  border-radius: 0 10px 10px 0; margin: 0 0 24px; font-size: 14px; }
+.callout p:last-child { margin: 0; }
 
-/* ---- report head + scorecard ---- */
-.rpt-head h2 { margin-bottom: 2px; }
-.score { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
-.sc { flex: 1 1 110px; border: 1px solid var(--hairline); border-radius: 8px;
-  padding: 10px 12px; border-left-width: 4px; }
-.sc b { display: block; font-size: 24px; line-height: 1.1; }
-.sc span { font-size: 12px; color: var(--fg-muted); }
-.sc-non_compliant { border-left-color: var(--bad-line); background: #fff6f6; }
-.sc-at_risk { border-left-color: var(--warn-line); background: #fffdf0; }
-.sc-not_assessed { border-left-color: var(--na-line); background: #fafbfc; }
-.sc-compliant { border-left-color: var(--ok-line); background: #f6fffa; }
-.disclaimer { border-top: 1px solid var(--hairline); padding-top: 10px; margin: 0;
-  font-size: 12.5px; }
+/* ---- index + filters ---- */
+.index { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; }
+.index a { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  padding: 3px 8px; border-radius: 5px; text-decoration: none; border: 1px solid;
+  color: inherit; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.filters button { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px;
+  border-radius: 999px; border: 1px solid var(--rule-2); background: var(--surface);
+  color: var(--ink-2); cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy);
+  color: #fff; }
 
 /* ---- sections ---- */
-h2.sec, .sec { font-size: 15px; margin: 22px 0 10px; letter-spacing: 0; }
-.cnt { display: inline-block; min-width: 20px; padding: 0 7px; margin-left: 6px;
-  border-radius: 999px; background: var(--na-bg); color: var(--na-fg);
-  font-size: 12.5px; font-weight: 600; }
-details.sec-d { margin: 0 0 6px; }
-details.sec-d > summary { cursor: pointer; padding: 6px 0; }
-details.sec-d > summary .sec { display: inline; margin: 0; font-weight: 600; }
+h2.sec { font-size: 13px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--navy); font-weight: 700; border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px; margin: 48px 0 16px; }
+details.sec-d { margin: 0 0 8px; }
+details.sec-d > summary { list-style: none; cursor: pointer; padding: 12px 16px;
+  background: var(--field); border: 1px solid var(--rule); border-radius: 8px;
+  display: flex; align-items: center; gap: 8px; }
+details.sec-d > summary::-webkit-details-marker { display: none; }
+details.sec-d > summary:hover { background: #E7EBF0; }
+details.sec-d > summary::before { content: "\25B8"; color: var(--ink-2);
+  transition: transform .12s; }
+details.sec-d[open] > summary::before { transform: rotate(90deg); }
+details.sec-d > summary h2 { font-size: 13px; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--navy); font-weight: 700; margin: 0;
+  border: 0; padding: 0; display: inline; }
+details.sec-d > .body { padding: 16px 0 24px; }
+.cnt { display: inline-block; min-width: 22px; padding: 0 8px; margin-left: 8px;
+  border-radius: 999px; font-size: 12px; font-weight: 700; text-align: center;
+  background: var(--na-bg); color: var(--na-fg); }
+.cnt-non_compliant { background: var(--bad-bg); color: var(--bad-fg); }
+.cnt-compliant { background: var(--ok-bg); color: var(--ok-fg); }
 
-/* ---- a control, as something to act on ---- */
-.ctrl { background: var(--surface); border: 1px solid var(--hairline);
-  border-left-width: 4px; border-radius: 8px; padding: 12px 14px; margin: 0 0 8px; }
-.ctrl-non_compliant { border-left-color: var(--bad-line); }
+/* ---- control rows: dense enough for forty ---- */
+.ctrl { background: var(--surface); border: 1px solid var(--rule); border-left-width: 6px;
+  border-radius: 8px; margin: 0 0 8px; }
+.ctrl-non_compliant { border-left-color: var(--bad-line); background: #FFFBFA; }
 .ctrl-at_risk { border-left-color: var(--warn-line); }
 .ctrl-not_assessed { border-left-color: var(--na-line); }
 .ctrl-compliant { border-left-color: var(--ok-line); }
-.ctrl-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
-.ctrl-ref { color: var(--fg-muted); font-size: 12px; }
-.ctrl-title { font-weight: 600; flex: 1 1 260px; }
-.ctrl-sum { margin: 7px 0 0; font-size: 14px; }
-.ctrl-meta { margin-top: 7px; font-size: 12px; }
-.findings { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; }
-.findings li { margin-bottom: 3px; }
-.st { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px;
-  font-weight: 600; white-space: nowrap; border: 1px solid; }
+.ctrl > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 12px; padding: 10px 16px; }
+.ctrl > summary::-webkit-details-marker { display: none; }
+.ctrl > summary:hover { background: rgba(31,78,121,.04); }
+.ctrl > summary::after { content: "\25B8"; color: var(--ink-3); margin-left: auto;
+  transition: transform .12s; }
+.ctrl[open] > summary::after { transform: rotate(90deg); }
+.ctrl-ref { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  color: var(--ink-2); flex: 0 0 auto; min-width: 74px; }
+.ctrl-title { font-weight: 600; font-size: 15px; flex: 1 1 240px; }
+.ctrl-act { font-size: 13px; font-weight: 600; }
+.a-non_compliant { color: var(--bad-fg); } .a-at_risk { color: var(--warn-fg); }
+.a-not_assessed { color: var(--na-fg); } .a-compliant { color: var(--ok-fg); }
+.ctrl .body { padding: 0 16px 14px 16px; }
+.ctrl-sum { margin: 0 0 8px; font-size: 14px; }
+.ctrl-meta { font-size: 12px; color: var(--ink-2); margin-top: 8px; }
+.findings { margin: 8px 0 0; padding-left: 20px; font-size: 14px; }
+.findings li { margin-bottom: 4px; }
+.st { display: inline-block; padding: 2px 10px; border-radius: 5px; font-size: 12px;
+  font-weight: 700; white-space: nowrap; border: 1px solid; flex: 0 0 auto; }
 .st-compliant { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
 .st-at_risk { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
 .st-non_compliant { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
 .st-not_assessed { background: var(--na-bg); color: var(--na-fg); border-color: var(--na-line); }
 
-/* ---- evidence disclosures ---- */
-details.refs, details.src { margin-top: 8px; }
-details.refs > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); }
-details.refs ul { margin: 6px 0 2px; padding-left: 18px; font-size: 12px; }
-details.refs li { margin-bottom: 2px; }
-.norefs { font-size: 12px; margin-top: 8px; }
-details.src > summary { cursor: pointer; font-size: 14px; padding: 9px 0;
-  border-top: 1px solid var(--hairline); }
-details.src h3 { margin: 14px 0 6px; }
-.kv { display: grid; grid-template-columns: 170px 1fr; gap: 5px 14px; margin: 10px 0 0; }
-.kv dt { color: var(--fg-muted); font-size: 13px; }
+/* ---- evidence + source records ---- */
+details.refs { margin-top: 12px; }
+details.refs > summary { cursor: pointer; font-size: 13px; color: var(--navy);
+  font-weight: 600; text-decoration: underline; }
+details.refs ul { margin: 8px 0 0; padding-left: 20px; font-size: 13px; }
+.norefs { font-size: 13px; color: var(--ink-2); margin-top: 12px; }
+details.src { margin-top: 8px; }
+details.src > summary { cursor: pointer; font-size: 15px; padding: 12px 0;
+  border-top: 1px solid var(--rule); }
+details.src h3, .card h3 { font-size: 12px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--ink-2); margin: 16px 0 8px; font-weight: 700; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 16px 20px; margin: 0 0 16px; }
+.kv { display: grid; grid-template-columns: 220px 1fr; gap: 4px 16px; margin: 8px 0 0;
+  font-size: 13px; }
+.kv dt { color: var(--ink-2); }
 .kv dd { margin: 0; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--hairline);
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule);
   vertical-align: top; }
-th { background: #eef1f5; font-size: 11.5px; text-transform: uppercase;
-  letter-spacing: 0.05em; color: var(--fg-muted); }
+th { background: var(--field); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--ink-2); }
 .scroll { overflow-x: auto; }
 table.rec { min-width: 0; width: auto; }
 table.rec th, table.rec td { white-space: nowrap; }
-button.showall { font: inherit; font-size: 12.5px; padding: 3px 10px; cursor: pointer;
-  border: 1px solid var(--hairline); border-radius: 6px; background: var(--surface); }
-button.showall:hover { background: #eef4fa; }
-.foot { margin-top: 34px; font-size: 12.5px; color: var(--fg-muted); }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px;
+  font-weight: 600; border: 1px solid; }
+.p-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
+.p-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
+.p-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.p-na { background: var(--na-bg); color: var(--na-fg); border-color: var(--na-line); }
+.rowfilter { font: inherit; font-size: 13px; padding: 6px 10px; margin: 8px 0;
+  border: 1px solid var(--rule-2); border-radius: 8px; width: 100%; max-width: 320px; }
+#parse-error { border: 1px solid var(--bad-line); background: var(--bad-bg);
+  color: var(--bad-fg); border-radius: 10px; padding: 16px 20px; margin: 0 0 24px; }
+#parse-error h2 { font-size: 20px; margin: 0 0 8px; }
+.busy { display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  margin: 0 0 24px; font-size: 15px; }
+.spin { width: 18px; height: 18px; border: 3px solid var(--rule);
+  border-top-color: var(--navy); border-radius: 50%; animation: sp .8s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } * { transition: none !important; } }
+.foot { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--rule);
+  font-size: 13px; color: var(--ink-2); }
 
-/* ---- print: the auditor puts paper in the evidence file ---- */
+/* ---- print: this goes in a ring binder ---- */
+.print-head { display: none; }
 @media print {
-  body { background: #fff; }
+  @page { size: A4; margin: 18mm 16mm 20mm 20mm; }
+  body { background: #fff; font-size: 10.5pt; line-height: 1.45; }
   .wrap { max-width: none; padding: 0; }
-  .noprint, #drop, #anchor { display: none !important; }
-  .card, .ctrl, .verdict { break-inside: avoid; border-radius: 0; }
+  .noprint, #drop, .steps, .filters, .foot, .pinrow, .filebar, .busy,
+  #dragveil, .rowfilter, .index { display: none !important; }
+  .print-head { display: block; border-bottom: 2pt solid #1F4E79;
+    padding-bottom: 8pt; margin-bottom: 14pt; }
+  .print-head .pt { font-size: 16pt; font-weight: 700; margin: 0 0 6pt; }
+  .print-head dl { display: grid; grid-template-columns: 34% 66%; gap: 2pt 8pt;
+    font-size: 9pt; margin: 0; }
+  .print-head dt { color: #333; }
+  .print-head dd { margin: 0; }
+  .card, .ctrl, .verdict, .trust { break-inside: avoid; border-radius: 0; }
+  h1, h2, h3, .sec, .headline { break-after: avoid; }
   a[href]:after { content: ""; }
-  table { font-size: 10px; }
-  /* Nothing may hide behind a collapsed disclosure on paper. */
+  /* Nothing may be clipped or hidden on paper. */
   details { display: block; }
-  details > summary { list-style: none; font-weight: 600; }
+  details > summary { list-style: none; }
   details:not([open]) > *:not(summary) { display: revert; }
-  th, .st, .pill, .sc, .verdict, .ctrl {
+  .ctrl > summary::after, details.sec-d > summary::before { content: ""; }
+  .scroll { overflow: visible !important; }
+  table { font-size: 8pt; table-layout: fixed; }
+  table.rec, table.rec th, table.rec td { white-space: normal !important;
+    word-break: break-word; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  /* Greyscale offices: the glyph carries the meaning, the border carries weight. */
+  .st, .pill { border-width: 1pt; }
+  th, .st, .pill, .tile, .verdict, .ctrl, .trust, .bar > i {
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
 </head>
 <body>
+
 <div class="wrap">
 
-<header class="top noprint">
-  <h1>Verify Sentari evidence</h1>
-  <p class="sub">
-    Opens a signed evidence pack, SBOM or VEX and checks it on this machine.
-    Nothing is uploaded &mdash; this page makes no network requests at all.
+<header id="intro">
+  <p class="eyebrow">Sentari offline verifier</p>
+  <h1>Check a compliance report, then read it</h1>
+  <p class="lede">
+    Confirm that a report you were sent is genuine and has not been altered &mdash;
+    then read the assessment. Everything happens on this computer: nothing is
+    uploaded, and this page makes no network connections at all.
   </p>
+  <ol class="steps">
+    <li>Open the file you were sent &mdash; a <code>.zip</code> pack, or the
+        <code>.json</code> files from one you extracted.</li>
+    <li>This page re-checks, on this machine, that nothing in it has changed
+        since it was signed.</li>
+    <li>You read the assessment, and can print it for your file.</li>
+  </ol>
   <div id="drop">
-    <strong>Drop the file here</strong>
-    <span class="sub">or click to choose &middot; <code>.json</code> or <code>.zip</code>,
-    or select all the files from an extracted pack</span>
-    <input id="file" type="file" multiple accept=".json,.zip,.txt,.pdf">
+    <span class="big">Drop the file here</span>
+    <p class="sub" style="margin:0 0 16px">
+      or choose it below &middot; also accepts signed SBOM and VEX exports
+    </p>
+    <label class="sr-only" for="file">Evidence pack, SBOM or VEX file</label>
+    <input id="file" type="file" multiple accept=".json,.zip">
+    <button type="button" class="btn" id="choose">Choose a file&hellip;</button>
   </div>
+  <p class="sub" style="margin-top:16px">
+    Have ready the signing fingerprint that the organisation published to you
+    separately &mdash; you will need it to confirm who produced the report.
+  </p>
 </header>
 
-<div id="parse-error" class="card hidden"></div>
+<div id="filebar" class="filebar hidden noprint">
+  <span class="name">Checked file: <strong id="filename"></strong></span>
+  <button type="button" class="btn btn-quiet" id="another">Check a different file</button>
+</div>
 
-<div id="results" class="hidden">
-  <!-- When everything checks out, trust is a tag: one line, then out of the
-       way. When it does not, renderTrust replaces this with a banner that is
-       impossible to miss. The auditor's time belongs to the assessment, not
-       to the cryptography. -->
+<div id="busy" class="busy hidden" role="status">
+  <span class="spin" aria-hidden="true"></span>
+  <span>Reading and checking the file on this computer&hellip;</span>
+</div>
+
+<div id="parse-error" class="hidden" role="alert"></div>
+
+<div id="results" class="hidden" aria-live="polite">
+  <!-- Print-only identity block: a page in an evidence file that does not say
+       what it is, what it covers and how it was checked is worthless six
+       months later. -->
+  <div class="print-head" id="print-head"></div>
   <div id="trust"></div>
   <div id="report"></div>
 </div>
 
-<div class="foot">
-  <p>
+<div class="foot noprint">
+  <p class="prose">
     A third independent implementation of the open
     <strong>Sentari evidence-pack specification</strong>, alongside the Python
     and Go reference verifiers in the same repository. All three are held to one
     published verdict table and agree on every committed conformance vector.
     Apache&#8209;2.0 &mdash; read the source of this file, check it, reimplement it.
   </p>
-  <p class="sub">
+  <p class="prose">
     Needs no network and no installation. To confirm you are running the
     published verifier and not an altered copy, compare this file&rsquo;s SHA&#8209;256
     against <code>verify.html.sha256</code> in the repository &mdash; on macOS or
@@ -1115,32 +1271,36 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
  * Presentation only. Every verdict and every flag comes from the core block
  * above; nothing here decides whether something verified.
  *
- * Information architecture, deliberately:
- *   - Whether the file is genuine is a ONE-TIME question. When the answer is
- *     yes it is a tag, and the verification detail folds away behind it.
- *     When the answer is no it becomes a wall, because then nothing else on
- *     the page matters.
- *   - Everything else is the assessment, and it leads with what needs acting
- *     on, because that is what the reader came for.
+ * Two rules shape this layer:
+ *
+ * 1. GREEN IS EARNED, NOT DEFAULT. The spec verdict for an artifact whose
+ *    maths checks out but whose signer you have not pinned is "verified"
+ *    (CONFORMANCE.md fixes that, and the CLIs exit 0), and this page does not
+ *    change it. But "verified" there means *internally consistent*, not
+ *    *authentic* — anyone with an Ed25519 keypair can produce a pack that
+ *    reaches it. So the TAG is three-state: amber until a fingerprint is
+ *    pinned and matches, green only after. Saying "Verified" in green over an
+ *    unauthenticated file would be worse than showing nothing.
+ *
+ * 2. THE ASSESSMENT IS THE DOCUMENT. Whether the file is genuine is a
+ *    one-time question; reading it is the job. So verification detail folds
+ *    away, and what needs acting on leads.
  * =========================================================================== */
 'use strict';
 (() => {
   const C = EvidenceCore;
   const $ = (id) => document.getElementById(id);
-  /* Everything rendered from an artifact goes through here. The input is
-     untrusted by definition -- that is the entire purpose of this page -- so
-     this must survive a field being an object or a null-prototype value where
-     a string was expected, rather than throwing and blanking the report.
-     (String() on an Object.create(null) value throws outright.) */
+
+  /* Everything rendered comes from an untrusted artifact — that is the whole
+     purpose of this page — so this must survive a field being an object, or a
+     null-prototype value, where a string was expected. */
   const esc = (v) => {
     let s;
     if (v === undefined || v === null) s = '';
     else if (typeof v === 'object') {
       try { s = JSON.stringify(v); } catch (_e) { s = '[unrenderable value]'; }
       if (s === undefined) s = '[unrenderable value]';
-    } else {
-      s = String(v);
-    }
+    } else s = String(v);
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   };
@@ -1149,153 +1309,251 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     compliant: 'Compliant', at_risk: 'At risk',
     non_compliant: 'Non-compliant', not_assessed: 'Not assessed',
   };
+  /* A glyph on every status, so a greyscale office printer still carries the
+     meaning that colour carries on screen. */
+  const STATUS_GLYPH = {
+    compliant: '✓', at_risk: '!',
+    non_compliant: '✕', not_assessed: '–',
+  };
   const STATUS_ORDER = ['non_compliant', 'at_risk', 'not_assessed', 'compliant'];
-  const GRADE_LABELS = { derived: 'Derived', observed: 'Observed', declared: 'Declared' };
-  /* What the reader must DO about each verdict — a status word alone tells a
-     compliance officer nothing about whether it lands on their worklist. */
-  const STATUS_MEANING = {
+  /* What the reader must DO about it. A status word alone does not tell a
+     compliance officer whether this lands on their worklist. */
+  const STATUS_ACTION = {
     non_compliant: 'Requires remediation',
     at_risk: 'Requires attention',
-    not_assessed: 'No evidence — assess manually',
+    not_assessed: 'Assess manually',
     compliant: 'Evidenced',
   };
+  /* Self-explaining labels. "Derived" means nothing to a first-time reader. */
+  const GRADE_LABELS = {
+    derived: 'Measured automatically',
+    observed: 'Read from a system of record',
+    declared: 'Declared by a named person',
+  };
+  const BASIS_LABELS = {
+    automated: 'Checked automatically',
+    attested: 'Signed off by a person',
+    manual: 'Assessed manually',
+  };
+  /* Database column names are not a reader interface. Unknown keys fall back
+     to a de-underscored sentence case, so nothing is ever hidden. */
+  const FIELD_LABELS = {
+    cve_findings: 'Vulnerability findings',
+    attestations: 'Sign-offs on record',
+    runtime_eol: 'Runtimes past end-of-life',
+    sbom: 'Software bill of materials',
+    security_posture: 'Security configuration',
+    coverage_reconciliation: 'Coverage reconciliation',
+    identity_posture: 'Identity directory',
+    endpoint_posture: 'Endpoint protection',
+    log_posture: 'Log collection',
+    hardening_posture: 'Hardening checks',
+    dora_register: 'DORA register',
+    as_of: 'Data as of',
+    kev_data_available: 'Known-exploited catalogue loaded',
+    kev_synced_at: 'Known-exploited catalogue updated',
+    correlation_has_run: 'Vulnerability matching has run',
+    cve_cache_count: 'Vulnerability records held',
+    scanned_device_count: 'Devices scanned',
+    uncorrelated_scan_count: 'Scans not yet matched',
+    enabled_source_count: 'Advisory sources enabled',
+    excluded_sources: 'Advisory sources excluded',
+    resolved_count: 'Findings resolved',
+    device_hostname: 'Device', device_id: 'Device',
+    package_name: 'Package', package_version: 'Version',
+    installed_version: 'Installed version',
+    cve_id: 'Vulnerability', severity: 'Severity', kev: 'Known exploited',
+    epss_score: 'Exploit likelihood', epss: 'Exploit likelihood',
+    first_seen: 'First seen', ecosystem: 'Ecosystem', source: 'Source',
+    suppressed: 'Suppressed', status: 'Status',
+    attested_by_email: 'Signed off by', approved_by_email: 'Approved by',
+    attested_at: 'Signed off', approved_at: 'Approved',
+    review_due: 'Review due', control_id: 'Control',
+    attestation_id: 'Reference', evidence_sha256: 'Evidence hash',
+  };
+  const label = (k) => FIELD_LABELS[k] ||
+    (String(k).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()));
 
   const CHECK_ROWS = [
-    ['payload_intact', 'The contents are unaltered since signing',
-      'Layer 1 — the content hash recomputes over the canonical bytes'],
-    ['frozen_inputs_valid', 'The numbers match the frozen sources they came from',
-      'Layer 2 — every per-source hash re-derived from this file alone'],
-    ['signature_valid', 'Signed by the deployment’s evidence key',
-      'Ed25519 over the domain-separated envelope'],
-    ['sig_fields_consistent', 'The signature block agrees with the contents',
-      'detached-block metadata vs the hash-verified payload'],
-    ['manifest_valid', 'Every file in the bundle matches the signed manifest',
-      'zip manifest — raw-bytes hash of each member'],
-    ['key_id_matches_material', 'The key fingerprint matches the key itself',
-      'key_id == sha256(public key)[:32]'],
+    ['payload_intact', 'The contents are unaltered since signing'],
+    ['frozen_inputs_valid', 'The numbers match the source records they came from'],
+    ['signature_valid', 'Signed with the deployment’s evidence key'],
+    ['sig_fields_consistent', 'The signature block agrees with the contents'],
+    ['manifest_valid', 'Every file in the bundle matches the signed list'],
+    ['key_id_matches_material', 'The key fingerprint matches the key itself'],
   ];
 
   const BAD_VERDICTS = {
     tampered: {
-      cls: 'v-bad', head: 'TAMPERED — do not rely on this file',
-      body: 'This artifact was altered after it was signed. Nothing below can be ' +
-            'trusted. Reject it, ask the deployment operator for a freshly ' +
-            'generated one, and treat the discrepancy as an incident.',
+      cls: 'v-bad', head: 'Altered — do not rely on this file',
+      body: 'Something in this file changed after it was signed, so nothing below ' +
+            'can be trusted. Reject it, ask whoever sent it for a freshly generated ' +
+            'copy, and treat the discrepancy as an incident.',
     },
     key_unknown: {
-      cls: 'v-warn', head: 'Signer not recognised',
-      body: 'The file is internally consistent, but it is not signed by the key you ' +
-            'pinned — rotated, foreign, or none supplied yet. This is not ' +
-            'tampering. The contents below are shown, but their origin is unconfirmed.',
+      cls: 'v-warn', head: 'Signed by a different key than the one you pinned',
+      body: 'The file itself is internally consistent, but it was not signed with ' +
+            'the fingerprint you entered — the key may have been rotated, or the ' +
+            'file may come from a different organisation. This is not tampering. ' +
+            'Check the fingerprint against the one currently published to you.',
     },
   };
 
-  let current = null;   // { obj, extras, members }
+  let current = null;            // { obj, extras, members, result, fileName }
+  let currentAnchor = '';
+  let statusFilter = 'all';
 
-  /* ---- trust: a tag when it is fine, a wall when it is not -------------- */
+  const fmtDate = (iso) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso === undefined ? '' : iso);
+    const date = d.toLocaleDateString('en-GB',
+      { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const time = d.toLocaleTimeString('en-GB',
+      { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    return date + ' at ' + time + ' UTC';
+  };
+
+  /* ---- trust: green is earned (see rule 1 at the top) ------------------- */
   function renderTrust(r, obj) {
     const v = C.verdictOf(r);
     const sig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
-    const kid = sig.key_id || '(none in file)';
-    const short = kid.length > 26 ? kid.slice(0, 22) + '…' : kid;
-    const anchor = ($('anchor') && $('anchor').value.trim()) || currentAnchor;
+    const kid = typeof sig.key_id === 'string' ? sig.key_id : '';
+    const tail = kid ? kid.slice(-6) : '';
+    const pinned = currentAnchor;
+    const matches = pinned && kid && pinned === kid;
 
-    let head;
-    if (v === 'verified') {
-      head = '<div class="trustbar"><span class="pill p-ok">&#10003; Verified</span>' +
-        '<span class="sub">Signature and contents check out on this machine. ' +
-        'Signed by <span class="mono">' + esc(short) + '</span></span></div>';
+    let head = '';
+    if (v === 'verified' && matches) {
+      head = '<div class="trust t-ok"><strong>✓ Verified</strong>' +
+        '<span class="t-msg">Unaltered since signing, and signed with the ' +
+        'fingerprint you pinned.</span></div>';
+    } else if (v === 'verified') {
+      // The maths is right; the signer is not established. Not green.
+      head = '<div class="trust t-warn"><strong>⚠ Unaltered — signer not ' +
+        'yet confirmed</strong><span class="t-msg">Nothing in this file has changed ' +
+        'since it was signed. To confirm it came from the organisation you expect, ' +
+        'enter the fingerprint they published to you.</span></div>';
     } else {
       const spec = BAD_VERDICTS[v];
-      head = '<div class="verdict ' + spec.cls + '"><h2>' + spec.head + '</h2><p>' +
-        spec.body + '</p></div>';
+      head = '<div class="verdict ' + spec.cls + '"><h2 id="verdict-head" tabindex="-1">' +
+        spec.head + '</h2><p>' + spec.body + '</p></div>';
     }
 
-    const checks = CHECK_ROWS.map(([flag, what, tech]) => {
+    // The pin is never hidden: it is the only thing standing between
+    // "internally consistent" and "authentic".
+    const pinState = !pinned
+      ? '<span class="pill p-warn">Not yet confirmed</span>'
+      : matches
+        ? '<span class="pill p-ok">Matches — this is the signer you expected</span>'
+        : '<span class="pill p-bad">Does not match what you pinned</span>';
+
+    const pinBlock =
+      '<div class="pinrow noprint"><label for="anchor">Confirm who signed it</label>' +
+      '<p class="explain">Checking the signature proves the file has not been ' +
+      'changed. It does <strong>not</strong> prove who produced it. Paste the ' +
+      'fingerprint the organisation published to you through a channel you already ' +
+      'trust &mdash; their documentation, a signed email, a portal. ' +
+      '<strong>Never take it from this file.</strong></p>' +
+      '<div class="pinfield"><input id="anchor" placeholder="ed25519:…" ' +
+      'spellcheck="false" autocomplete="off" value="' + esc(pinned) + '">' +
+      '<span id="pinstate">' + pinState + '</span></div>' +
+      (kid ? '<p class="sub" style="margin:12px 0 0">This file is signed with ' +
+        '<span class="mono">' + esc(kid) + '</span></p>' : '') +
+      '</div>';
+
+    const checks = CHECK_ROWS.map(([flag, what]) => {
       const val = r[flag];
-      let mark = '&ndash;', cls = 'm-na', suffix = '';
-      if (val === true) { mark = '&#10003;'; cls = 'm-ok'; }
-      else if (val === false) { mark = '&#10007;'; cls = 'm-bad'; }
+      let mark = '–', cls = 'm-na', sr = 'Not checked', suffix = '';
+      if (val === true) { mark = '✓'; cls = 'm-ok'; sr = 'Passed'; }
+      else if (val === false) { mark = '✕'; cls = 'm-bad'; sr = 'Failed'; }
       else if (flag === 'frozen_inputs_valid') {
         suffix = r.layer2_na
-          ? ' — not applicable to this artifact class'
-          : ' — not included in this file, so not checkable offline';
+          ? ' — this kind of file has no source records'
+          : ' — not included in this file, so it could not be checked here';
       } else if (flag === 'manifest_valid') {
-        suffix = ' — not applicable (no bundle manifest)';
+        suffix = ' — not applicable, this is a single file';
       } else if (flag === 'signature_valid') {
-        suffix = ' — could not be evaluated';
-      } else { suffix = ' — not checked'; }
-      return '<li><span class="mark ' + cls + '">' + mark + '</span>' +
-        '<span class="what">' + esc(what) + '<span class="sub">' + suffix + '</span>' +
-        '<br><span class="flag">' + esc(tech) + ' &middot; ' + flag + '</span></span></li>';
+        suffix = ' — could not be checked';
+      }
+      return '<li><span class="mark ' + cls + '" aria-hidden="true">' + mark + '</span>' +
+        '<span class="sr-only">' + sr + ': </span>' +
+        '<span class="what">' + esc(what) + '<span class="sub">' + suffix + '</span></span></li>';
     }).join('');
 
     const per = Object.keys(r.per_source || {});
     let notes = '';
     if (per.length) {
       const bad = per.filter((k) => !r.per_source[k]);
-      notes += '<p><strong>' + per.length + ' frozen source(s) re-derived</strong>' +
-        (bad.length ? ': failed &mdash; ' + esc(bad.join(', ')) : ': all match') + '.</p>';
+      notes += '<p>' + per.length + ' set(s) of source records re-checked' +
+        (bad.length ? ': <strong>failed</strong> — ' + esc(bad.join(', ')) : ': all match') +
+        '.</p>';
     }
     if (r.notes && r.notes.length) {
       notes += '<p>' + r.notes.map((n) => '&middot; ' + esc(n)).join('<br>') + '</p>';
     }
 
-    // The out-of-band pin lives in here too. It matters enormously, but it is
-    // a once-per-deployment act, not something to re-read on every pack.
-    const pinState = !anchor
-      ? '<span class="pill p-warn">Authenticity not established</span>'
-      : anchor === kid
-        ? '<span class="pill p-ok">Matches — this is the signer you expected</span>'
-        : '<span class="pill p-bad">Does NOT match the key you pinned</span>';
+    $('trust').innerHTML = head + pinBlock +
+      '<details class="vdetails noprint"><summary>What exactly was checked</summary>' +
+      '<div class="card"><ul class="checks">' + checks + '</ul>' +
+      '<div class="legend">' + notes + '</div></div></details>';
 
-    const openAttr = v === 'verified' ? '' : ' open';
-    $('trust').innerHTML = head +
-      '<details class="vdetails"' + openAttr + '><summary>How this was verified' +
-      (anchor ? '' : ' &middot; confirm who signed it') + '</summary>' +
-      '<div class="card">' +
-      '<h3 style="margin-top:0">What was checked</h3><ul class="checks">' + checks +
-      '</ul><div class="legend">' + notes + '</div>' +
-      '<h3>Who signed it</h3>' +
-      '<p class="sub">Verifying the signature proves the file is internally ' +
-      'consistent. It does <strong>not</strong> prove who produced it. Compare the ' +
-      'fingerprint against the one the deployment publishes through a channel you ' +
-      'already trust. <strong>Never take it from this file.</strong></p>' +
-      '<label class="pinlabel" for="anchor">The fingerprint you were given ' +
-      '(out&#8209;of&#8209;band)</label>' +
-      '<input id="anchor" class="noprint" placeholder="ed25519:..." spellcheck="false" ' +
-      'autocomplete="off" value="' + esc(anchor) + '">' +
-      '<dl class="kv"><dt>Signed by this key</dt><dd class="mono">' + esc(kid) + '</dd>' +
-      '<dt>Result</dt><dd>' + pinState + '</dd></dl>' +
-      '</div></details>';
-
-    $('anchor').addEventListener('input', onAnchorInput);
+    const input = $('anchor');
+    input.addEventListener('input', onAnchorInput);
   }
 
-  let currentAnchor = '';
+  /* Comparing a pinned fingerprint to the file's key id is a STRING compare.
+     Re-running canonicalisation, SHA-256 over the whole payload, every
+     per-source hash and a fresh Ed25519 verify on every keystroke (46 times
+     for one fingerprint) is pure waste, and on a large pack it makes the
+     field unusable. */
   function onAnchorInput() {
     currentAnchor = $('anchor').value.trim();
     if (!current) return;
-    const pos = $('anchor').selectionStart;
-    let r;
-    try {
-      r = C.verifyJson(current.obj, currentAnchor || null, current.extras);
-    } catch (e) { return fail(e.message); }
-    if (current.members) applyManifest(r, current.members);
-    renderTrust(r, current.obj);
-    const el = $('anchor');
-    el.focus();
-    try { el.setSelectionRange(pos, pos); } catch (_e) {}
+    const r = current.result;
+    const sig = (current.obj && (current.obj.signature ||
+      (current.obj.payload && current.obj.payload.signature))) || {};
+    const kid = typeof sig.key_id === 'string' ? sig.key_id : '';
+    r.key_id_matches_anchor = currentAnchor ? currentAnchor === kid : null;
+
+    const v = C.verdictOf(r);
+    const matches = currentAnchor && kid && currentAnchor === kid;
+    $('pinstate').innerHTML = !currentAnchor
+      ? '<span class="pill p-warn">Not yet confirmed</span>'
+      : matches
+        ? '<span class="pill p-ok">Matches — this is the signer you expected</span>'
+        : '<span class="pill p-bad">Does not match what you pinned</span>';
+
+    // Only the headline band changes; the input keeps focus and caret because
+    // we never replace it.
+    const holder = $('trust').firstElementChild;
+    if (v === 'verified' && matches) {
+      holder.outerHTML = '<div class="trust t-ok"><strong>✓ Verified</strong>' +
+        '<span class="t-msg">Unaltered since signing, and signed with the ' +
+        'fingerprint you pinned.</span></div>';
+    } else if (v === 'verified') {
+      holder.outerHTML = '<div class="trust t-warn"><strong>⚠ Unaltered — ' +
+        'signer not yet confirmed</strong><span class="t-msg">Nothing in this file ' +
+        'has changed since it was signed. To confirm it came from the organisation ' +
+        'you expect, enter the fingerprint they published to you.</span></div>';
+    } else {
+      const spec = BAD_VERDICTS[v];
+      holder.outerHTML = '<div class="verdict ' + spec.cls + '"><h2>' + spec.head +
+        '</h2><p>' + spec.body + '</p></div>';
+    }
   }
 
-  /* ---- one control, rendered as something you can act on --------------- */
+  /* ---- one control ------------------------------------------------------ */
   function controlBlock(c, graded) {
     const st = c.status || '';
-    let h = '<div class="ctrl ctrl-' + esc(st) + '">';
-    h += '<div class="ctrl-head"><span class="st st-' + esc(st) + '">' +
-      esc(STATUS_LABELS[st] || st) + '</span>' +
-      '<span class="ctrl-ref mono">' + esc(c.article_ref) + '</span>' +
-      '<span class="ctrl-title">' + esc(c.title) + '</span></div>';
+    const id = 'ctrl-' + String(c.id || c.article_ref || '').replace(/[^\w.-]/g, '');
+    let h = '<details class="ctrl ctrl-' + esc(st) + '" id="' + esc(id) +
+      '" data-status="' + esc(st) + '">';
+    h += '<summary><span class="st st-' + esc(st) + '">' +
+      esc(STATUS_GLYPH[st] || '') + ' ' + esc(STATUS_LABELS[st] || st) + '</span>' +
+      '<span class="ctrl-ref">' + esc(c.article_ref) + '</span>' +
+      '<span class="ctrl-title">' + esc(c.title) + '</span>' +
+      '<span class="ctrl-act a-' + esc(st) + '">' + esc(STATUS_ACTION[st] || '') +
+      '</span></summary><div class="body">';
     h += '<p class="ctrl-sum">' + esc(c.summary) + '</p>';
     const findings = c.findings || [];
     if (findings.length) {
@@ -1307,19 +1565,18 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       }
       h += '</ul>';
     }
-    h += '<div class="ctrl-meta sub">' + esc(STATUS_MEANING[st] || '') +
-      ' &middot; basis: ' + esc(c.basis) +
+    h += '<p class="ctrl-meta">' + esc(BASIS_LABELS[c.basis] || c.basis) +
       (graded && c.evidence_class
-        ? ' &middot; evidence: ' + esc(GRADE_LABELS[c.evidence_class] || c.evidence_class)
-        : '') + '</div>';
-    h += renderRefs(c) + '</div>';
+        ? ' &middot; ' + esc(GRADE_LABELS[c.evidence_class] || c.evidence_class) : '') +
+      '</p>';
+    h += renderRefs(c) + '</div></details>';
     return h;
   }
 
   function renderRefs(c) {
     const refs = c.evidence_refs || [];
     if (!refs.length) {
-      return '<div class="sub norefs">No evidence references recorded for this control.</div>';
+      return '<p class="norefs">No supporting records are referenced for this control.</p>';
     }
     const items = refs.map((x) => {
       const ref = (x && typeof x === 'object') ? x.ref : x;
@@ -1328,7 +1585,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         (cls ? ' <span class="pill p-na">' + esc(GRADE_LABELS[cls] || cls) + '</span>' : '') +
         '</li>';
     }).join('');
-    return '<details class="refs"><summary>Evidence (' + refs.length +
+    return '<details class="refs"><summary>Supporting records (' + refs.length +
       ')</summary><ul>' + items + '</ul></details>';
   }
 
@@ -1340,119 +1597,171 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     controls.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
     const graded = controls.some((c) => c.evidence_class);
     const by = (s) => controls.filter((c) => c.status === s);
+    const total = controls.length;
+    const bad = counts.non_compliant || 0;
+    const risk = counts.at_risk || 0;
+    const none = counts.not_assessed || 0;
 
-    let h = '<div class="card rpt-head">';
-    h += '<h2>' + esc(payload.framework || 'Compliance') + ' — ' +
-      esc(payload.framework_version || '') + '</h2>';
-    h += '<p class="sub">' + esc((payload.scope && payload.scope.kind) || 'unknown') +
-      ' scope &middot; generated ' + esc(payload.generated_at) +
-      ' &middot; catalog ' + esc(payload.catalog_version) + '</p>';
+    let h = '<h2 class="doc-title">' + esc(payload.framework || 'Compliance') +
+      ' assessment</h2>';
+    h += '<p class="doc-meta">' + esc(payload.framework_version || '') +
+      ' &middot; all devices in the estate &middot; report generated ' +
+      esc(fmtDate(payload.generated_at)) + '</p>';
 
-    // The scorecard IS the headline: what needs doing, at a glance.
-    h += '<div class="score">';
+    // A sentence, not four tiles: this is the finding of the whole document.
+    let headline;
+    if (!total) headline = 'This pack assesses no controls.';
+    else if (bad || risk) {
+      headline = bad
+        ? bad + ' of ' + total + ' assessed control' + (total === 1 ? ' is' : 's are') +
+          ' non-compliant' + (risk ? ', and ' + risk + ' more ' +
+          (risk === 1 ? 'is' : 'are') + ' at risk' : '') + '.'
+        : risk + ' of ' + total + ' assessed controls ' + (risk === 1 ? 'is' : 'are') +
+          ' at risk. None is non-compliant.';
+    } else if (none === total) headline = 'No control in this pack carries evidence either way.';
+    else headline = 'Every assessed control is evidenced as compliant.';
+    h += '<p class="headline">' + esc(headline) + '</p>';
+
+    // Proportion bar + counts.
+    const segs = STATUS_ORDER.filter((s) => counts[s])
+      .map((s) => '<i class="b-' + s + '" style="flex:' + counts[s] + '"></i>').join('');
+    const aria = STATUS_ORDER.map((s) => (counts[s] || 0) + ' ' + STATUS_LABELS[s]).join(', ');
+    if (total) {
+      h += '<div class="bar" role="img" aria-label="' + esc(aria) + '">' + segs + '</div>';
+    }
+    h += '<div class="tiles">';
     STATUS_ORDER.forEach((s) => {
-      h += '<div class="sc sc-' + s + '"><b>' + (counts[s] || 0) + '</b>' +
+      h += '<div class="tile tile-' + s + '"><b>' + (counts[s] || 0) + '</b>' +
         '<span>' + STATUS_LABELS[s] + '</span></div>';
     });
     h += '</div>';
-    h += '<p class="disclaimer sub">Supports a verification or certification ' +
-      'performed by the entity or an accredited conformity-assessment body. ' +
-      'Not a certificate, not an audit opinion, and no presumption of conformity. ' +
-      'Assesses ' + (coverage.assessed_control_ids || []).length +
-      ' control(s) &mdash; not the full framework.</p>';
-    h += '</div>';
 
-    // 1. What needs acting on, first and expanded.
+    // The frame a first-time reader needs, before any number is interpreted.
+    h += '<div class="callout"><p><strong>What this is:</strong> a signed, ' +
+      'machine-checkable record of control results computed from the ' +
+      'organisation’s own systems. It <em>supports</em> a verification or ' +
+      'certification carried out by the organisation itself or by an accredited ' +
+      'conformity-assessment body.</p><p><strong>What it is not:</strong> a ' +
+      'certificate, an accredited audit opinion, or any presumption of conformity. ' +
+      'It covers ' + total + ' control(s) — not the whole framework.</p></div>';
+
+    // An index, so every control is findable and linkable, and so Ctrl-F has
+    // something to land on even when a section is collapsed.
+    if (total) {
+      h += '<h2 class="sec">All ' + total + ' assessed controls</h2><div class="index">';
+      controls.forEach((c) => {
+        const id = 'ctrl-' + String(c.id || c.article_ref || '').replace(/[^\w.-]/g, '');
+        h += '<a href="#' + esc(id) + '" class="st st-' + esc(c.status) + '">' +
+          esc(c.article_ref) + '</a>';
+      });
+      h += '</div>';
+      h += '<div class="filters noprint" role="group" aria-label="Filter controls by status">';
+      h += '<button type="button" data-filter="all" aria-pressed="true">All ' + total + '</button>';
+      STATUS_ORDER.forEach((s) => {
+        if (counts[s]) {
+          h += '<button type="button" data-filter="' + s + '" aria-pressed="false">' +
+            STATUS_LABELS[s] + ' ' + counts[s] + '</button>';
+        }
+      });
+      h += '</div>';
+    }
+
     const attention = by('non_compliant').concat(by('at_risk'));
-    h += '<h2 class="sec">Needs attention <span class="cnt">' + attention.length + '</span></h2>';
-    h += attention.length
+    h += '<h2 class="sec">Needs attention' +
+      '<span class="cnt cnt-non_compliant">' + attention.length + '</span></h2>';
+    h += '<div id="sec-attention">' + (attention.length
       ? attention.map((c) => controlBlock(c, graded)).join('')
-      : '<div class="card sub">No control came back non-compliant or at risk.</div>';
+      : '<div class="card sub">No control came back non-compliant or at risk.</div>') + '</div>';
 
-    // 2. Controls with no evidence either way — a gap, not a pass.
     const na = by('not_assessed');
     if (na.length) {
-      h += '<details class="sec-d"><summary><span class="sec">No evidence ' +
-        '<span class="cnt">' + na.length + '</span></span>' +
-        '<span class="sub"> &mdash; assessed manually, or out of Sentari’s reach</span>' +
-        '</summary>' + na.map((c) => controlBlock(c, graded)).join('') + '</details>';
+      h += section('no-evidence', 'No evidence either way', na.length, 'not_assessed',
+        na.map((c) => controlBlock(c, graded)).join(''),
+        'assessed manually, or outside what Sentari can see');
     }
-
-    // 3. The passes, folded away.
     const ok = by('compliant');
     if (ok.length) {
-      h += '<details class="sec-d"><summary><span class="sec">Evidenced compliant ' +
-        '<span class="cnt">' + ok.length + '</span></span></summary>' +
-        ok.map((c) => controlBlock(c, graded)).join('') + '</details>';
+      h += section('compliant', 'Evidenced compliant', ok.length, 'compliant',
+        ok.map((c) => controlBlock(c, graded)).join(''));
     }
-
-    // 4. The honesty ledger: obligations this pack does not speak to at all.
     const gaps = coverage.not_assessed_framework_refs || [];
     if (gaps.length) {
-      h += '<details class="sec-d"><summary><span class="sec">Outside this pack ' +
-        '<span class="cnt">' + gaps.length + '</span></span>' +
-        '<span class="sub"> &mdash; framework obligations it makes no claim about</span>' +
-        '</summary><div class="card"><ul>' +
-        gaps.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></div></details>';
+      h += section('gaps', 'Outside this pack', gaps.length, '',
+        '<div class="card"><ul>' + gaps.map((x) => '<li>' + esc(x) + '</li>').join('') +
+        '</ul></div>', 'framework obligations it makes no claim about');
+    }
+    if (graded) {
+      h += '<p class="sub prose" style="margin-top:24px"><strong>How each result was ' +
+        'evidenced.</strong> <em>Measured automatically</em> — taken from the ' +
+        'organisation’s own systems by Sentari’s collector. <em>Read from a ' +
+        'system of record</em> — taken from another authoritative system (an ' +
+        'identity directory, a backup service, a log platform) and frozen and hashed ' +
+        'exactly as read. <em>Declared by a named person</em> — a human ' +
+        'attestation on record.</p>';
     }
     return h;
   }
 
-  /* ---- the frozen records (folded: reached from a control's Evidence) --- */
+  function section(id, title, count, tone, inner, note) {
+    return '<details class="sec-d" id="sec-' + id + '"><summary>' +
+      '<h2 class="sec" style="margin:0;border:0;padding:0">' + esc(title) +
+      '<span class="cnt' + (tone ? ' cnt-' + tone : '') + '">' + count + '</span></h2>' +
+      (note ? '<span class="sub">&mdash; ' + esc(note) + '</span>' : '') +
+      '</summary><div class="body">' + inner + '</div></details>';
+  }
+
+  /* ---- source records --------------------------------------------------- */
   function renderFrozen(frozen, r) {
     if (!frozen || typeof frozen !== 'object') return '';
     const sources = frozen.sources || {};
     const names = Object.keys(sources).sort();
     if (!names.length) return '';
-    const total = names.reduce(
-      (n, k) => n + ((sources[k] && sources[k].rows) || []).length, 0);
+    const total = names.reduce((n, k) => n + ((sources[k] && sources[k].rows) || []).length, 0);
 
-    let h = '<details class="sec-d" id="frozen"><summary><span class="sec">' +
-      'Source records <span class="cnt">' + total + '</span></span>' +
-      '<span class="sub"> &mdash; the raw evidence every verdict was computed from</span>' +
-      '</summary><div class="card">';
-    h += '<p class="sub">Captured when the pack was generated and hashed ' +
-      'individually. Every hash below was re-derived on this machine from this ' +
-      'file alone, so this is provably the data that was signed.</p>';
+    let inner = '<div class="card"><p class="prose sub">The records below were ' +
+      'captured when the report was generated and hashed individually. Every hash ' +
+      'was re-checked on this computer from this file alone, so this is provably ' +
+      'the data the results were computed from.</p>';
 
     const meta = Object.keys(frozen).filter((k) => k !== 'sources').sort();
     if (meta.length) {
-      h += '<dl class="kv">';
+      inner += '<dl class="kv">';
       meta.forEach((k) => {
         const v = C.plain(frozen[k]);
-        h += '<dt>' + esc(k) + '</dt><dd class="mono">' +
-          esc(typeof v === 'object' && v !== null ? JSON.stringify(v) : v) + '</dd>';
+        inner += '<dt>' + esc(label(k)) + '</dt><dd class="mono">' +
+          esc(/_at$|^as_of$/.test(k) ? fmtDate(v) : v) + '</dd>';
       });
-      h += '</dl>';
+      inner += '</dl>';
     }
 
     names.forEach((name) => {
       const src = sources[name] || {};
       const rows = Array.isArray(src.rows) ? src.rows : [];
       const ok = r.per_source ? r.per_source[name] : undefined;
-      const badge = ok === true ? '<span class="pill p-ok">hash re-derived</span>'
-        : ok === false ? '<span class="pill p-bad">HASH MISMATCH</span>'
-        : '<span class="pill p-na">not checked</span>';
-      h += '<details class="src"><summary><strong>' + esc(name) + '</strong> &middot; ' +
-        rows.length + ' record(s) ' + badge + '</summary>';
-      h += '<dl class="kv"><dt>Source SHA-256</dt><dd class="mono">' +
+      const badge = ok === true ? '<span class="pill p-ok">Hash matches</span>'
+        : ok === false ? '<span class="pill p-bad">HASH DOES NOT MATCH</span>'
+        : '<span class="pill p-na">Not checked</span>';
+      inner += '<details class="src"><summary><strong>' + esc(label(name)) +
+        '</strong> &middot; ' + rows.length + ' record(s) ' + badge + '</summary>';
+      inner += '<dl class="kv"><dt>Hash of these records</dt><dd class="mono">' +
         esc(src.sha256 || '(none)') + '</dd></dl>';
-      const summaryKeys = Object.keys(src).filter((k) => k !== 'rows' && k !== 'sha256').sort();
-      if (summaryKeys.length) {
-        h += '<h3>Source totals</h3><dl class="kv">';
-        summaryKeys.forEach((k) => {
+      const keys = Object.keys(src).filter((k) => k !== 'rows' && k !== 'sha256').sort();
+      if (keys.length) {
+        inner += '<h3>Totals for this source</h3><dl class="kv">';
+        keys.forEach((k) => {
           const v = C.plain(src[k]);
-          h += '<dt>' + esc(k) + '</dt><dd class="mono">' +
-            esc(v === null ? 'null' : (typeof v === 'object' ? JSON.stringify(v) : v)) +
-            '</dd>';
+          inner += '<dt>' + esc(label(k)) + '</dt><dd class="mono">' +
+            esc(v === null ? 'not recorded' : (/_at$/.test(k) ? fmtDate(v) : v)) + '</dd>';
         });
-        h += '</dl>';
+        inner += '</dl>';
       }
-      if (rows.length) h += '<h3>Records</h3>' + renderRows(name, rows);
-      else if (!summaryKeys.length) h += '<p class="sub">This source froze no records.</p>';
-      h += '</details>';
+      if (rows.length) inner += '<h3>Records</h3>' + renderRows(name, rows);
+      else if (!keys.length) inner += '<p class="sub">This source froze no records.</p>';
+      inner += '</details>';
     });
-    return h + '</div></details>';
+    inner += '</div>';
+    return section('records', 'Source records', total, '', inner,
+      'the raw evidence every result was computed from');
   }
 
   const ROW_PAGE = 100;
@@ -1466,13 +1775,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     });
     const shown = showAll ? rows : rows.slice(0, ROW_PAGE);
     let h = '<div class="scroll"><table class="rec"><thead><tr>';
-    cols.forEach((c) => { h += '<th>' + esc(c) + '</th>'; });
+    cols.forEach((c) => { h += '<th>' + esc(label(c)) + '</th>'; });
     h += '</tr></thead><tbody>';
     shown.forEach((row) => {
       h += '<tr>';
       cols.forEach((c) => {
         const v = C.plain(row ? row[c] : undefined);
-        const txt = v === undefined ? '' : v === null ? 'null'
+        const txt = v === undefined ? '' : v === null ? '—'
           : typeof v === 'object' ? JSON.stringify(v) : String(v);
         h += '<td class="mono">' + esc(txt) + '</td>';
       });
@@ -1480,9 +1789,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     });
     h += '</tbody></table></div>';
     if (!showAll && rows.length > ROW_PAGE) {
-      h += '<p class="sub noprint">Showing the first ' + ROW_PAGE + ' of ' + rows.length +
-        ' records. <button type="button" class="showall" data-src="' + esc(name) +
-        '">Show all ' + rows.length + '</button></p>';
+      // Printed evidence must never silently omit rows, so this line prints.
+      h += '<p class="sub">Showing the first ' + ROW_PAGE + ' of ' + rows.length +
+        ' records. <button type="button" class="btn btn-quiet showall noprint" ' +
+        'data-src="' + esc(name) + '">Show all ' + rows.length + '</button></p>';
     }
     return h;
   }
@@ -1491,56 +1801,88 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const doc = obj.document || {};
     const comps = doc.components || [];
     const stmts = doc.statements || doc.vulnerabilities || [];
-    let h = '<div class="card rpt-head"><h2>Signed ' + esc(r.kind) + '</h2>';
-    h += '<div class="score">';
-    if (comps.length) h += '<div class="sc"><b>' + comps.length + '</b><span>Components</span></div>';
+    const kind = r.kind === 'SBOM' ? 'Software bill of materials' : 'Vulnerability statement';
+    let h = '<h2 class="doc-title">' + esc(kind) + '</h2>';
+    h += '<p class="doc-meta">Signed ' + esc(r.kind) + ' export &middot; ' +
+      esc(doc.bomFormat || doc.spdxVersion || doc['@context'] || 'unknown format') + '</p>';
+    h += '<div class="tiles">';
+    if (comps.length) h += '<div class="tile"><b>' + comps.length + '</b><span>Components listed</span></div>';
     if (Array.isArray(stmts) && stmts.length) {
-      h += '<div class="sc"><b>' + stmts.length + '</b><span>Statements</span></div>';
+      h += '<div class="tile"><b>' + stmts.length + '</b><span>Statements</span></div>';
     }
     h += '</div>';
-    h += '<dl class="kv">';
-    [['Format', doc.bomFormat || doc['@context'] || doc.spdxVersion || 'unknown'],
-     ['Spec version', C.plain(doc.specVersion)],
-     ['Document ID', doc.serialNumber || doc.id || doc.documentNamespace]
-    ].forEach(([k, v]) => {
-      if (v) h += '<dt>' + esc(k) + '</dt><dd class="mono">' + esc(v) + '</dd>';
-    });
-    h += '</dl>';
-    h += '<p class="disclaimer sub">A verified signature here proves <strong>integrity</strong> ' +
-      '(these exact bytes are unaltered) and <strong>provenance</strong> (produced by this ' +
-      'deployment’s key). It does <strong>not</strong> prove completeness, correctness, or ' +
-      'freshness — this is a point-in-time export, not a live view of the fleet.</p>';
-    h += '</div>';
+    h += '<div class="callout"><p><strong>What a good result here proves:</strong> ' +
+      'that these exact bytes are unaltered, and that they were produced by this ' +
+      'deployment’s key.</p><p><strong>What it does not prove:</strong> that the ' +
+      'list is complete, that the versions and statuses in it are correct, or that ' +
+      'it is current — it is a point-in-time export, not a live view.</p></div>';
     if (comps.length) {
-      h += '<details class="sec-d"><summary><span class="sec">Components ' +
-        '<span class="cnt">' + comps.length + '</span></span></summary><div class="card">' +
-        renderRows('components', comps.map((c) => ({
-          name: c.name, version: C.plain(c.version), type: c.type,
-          purl: c.purl, licenses: c.licenses ? JSON.stringify(c.licenses) : undefined,
-        }))) + '</div></details>';
+      h += section('components', 'Components', comps.length, '',
+        '<div class="card">' + renderRows('components', comps.map((c) => ({
+          package_name: c.name, package_version: C.plain(c.version), type: c.type,
+          purl: c.purl,
+        }))) + '</div>');
     }
     return h;
   }
 
+  /* ---- print identity block -------------------------------------------- */
+  function renderPrintHead(payload, r, obj) {
+    const sig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
+    const v = C.verdictOf(r);
+    const result = v === 'verified'
+      ? (currentAnchor && currentAnchor === sig.key_id
+        ? 'Verified — unaltered, signed by the pinned fingerprint'
+        : 'Unaltered since signing; signer NOT confirmed against a pinned fingerprint')
+      : v === 'tampered' ? 'ALTERED AFTER SIGNING — rejected'
+      : 'Signed by a key other than the pinned fingerprint';
+    const rows = [
+      ['Scope', 'All devices in the estate'],
+      ['Report generated', fmtDate(payload.generated_at)],
+      ['Catalogue version', payload.catalog_version],
+      ['Pack identifier', payload.pack_id],
+      ['Content SHA-256', payload.content_sha256],
+      ['Signing key', sig.key_id],
+      ['Fingerprint pinned', currentAnchor || 'none supplied'],
+      ['Verification result', result],
+      ['Printed on', fmtDate(new Date().toISOString())],
+      ['Checked with', 'Sentari offline verifier (verify.html)'],
+    ];
+    $('print-head').innerHTML =
+      '<p class="pt">' + esc(payload.framework || 'Compliance') + ' assessment — ' +
+      esc(payload.framework_version || '') + '</p><dl>' +
+      rows.filter(([, v2]) => v2).map(([k, v2]) =>
+        '<dt>' + esc(k) + '</dt><dd>' + esc(v2) + '</dd>').join('') + '</dl>';
+  }
+
   /* ---- drive ------------------------------------------------------------ */
-  function show(obj, r, extras, members) {
-    current = { obj, extras: extras || {}, members: members || null };
+  function show(obj, r, extras, members, fileName) {
+    current = { obj, extras: extras || {}, members: members || null, result: r, fileName };
+    $('busy').classList.add('hidden');
     $('parse-error').classList.add('hidden');
     $('results').classList.remove('hidden');
+    $('intro').classList.add('hidden');
+    $('filebar').classList.remove('hidden');
+    $('filename').textContent = fileName || 'the file you opened';
     renderTrust(r, obj);
     if (r.kind === 'pack') {
       const payload = (obj.payload && typeof obj.payload === 'object') ? obj.payload : obj;
       const frozen = (extras && extras.frozenInputs) || obj.frozen_inputs;
       $('report').innerHTML = renderPack(payload) + renderFrozen(frozen, r);
-      wireShowAll(frozen);
+      renderPrintHead(payload, r, obj);
+      wireReport(frozen);
     } else if (r.kind === 'SBOM' || r.kind === 'VEX') {
       $('report').innerHTML = renderDocument(obj, r);
+      $('print-head').innerHTML = '';
+      wireReport(null);
     } else {
       $('report').innerHTML = '';
     }
+    const h = document.querySelector('#verdict-head');
+    if (h) h.focus();
   }
 
-  function wireShowAll(frozen) {
+  function wireReport(frozen) {
     const sources = (frozen && frozen.sources) || {};
     document.querySelectorAll('button.showall').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1555,48 +1897,100 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         btn.closest('p').remove();
       });
     });
+    document.querySelectorAll('.filters button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        statusFilter = btn.getAttribute('data-filter');
+        document.querySelectorAll('.filters button').forEach((b) =>
+          b.setAttribute('aria-pressed', String(b === btn)));
+        applyFilter();
+      });
+    });
+    // Following an index link must reveal the control even when its section
+    // is collapsed, or the link silently does nothing.
+    document.querySelectorAll('.index a').forEach((a) => {
+      a.addEventListener('click', () => {
+        // getElementById, not querySelector: control ids legitimately contain
+        // dots ("cyfun.id.am-1"), which a CSS selector reads as class
+        // separators -- so the lookup silently finds nothing and the link
+        // appears to do nothing.
+        const el = document.getElementById(a.getAttribute('href').slice(1));
+        if (!el) return;
+        let p = el.parentElement;
+        while (p) {
+          if (p.tagName === 'DETAILS') p.open = true;
+          p = p.parentElement;
+        }
+        el.open = true;
+      });
+    });
+  }
+
+  function applyFilter() {
+    document.querySelectorAll('.ctrl').forEach((el) => {
+      const s = el.getAttribute('data-status');
+      el.classList.toggle('hidden', statusFilter !== 'all' && s !== statusFilter);
+    });
+    document.querySelectorAll('details.sec-d').forEach((d) => {
+      if (statusFilter !== 'all' && d.querySelector('.ctrl:not(.hidden)')) d.open = true;
+    });
   }
 
   function fail(msg) {
+    $('busy').classList.add('hidden');
     $('results').classList.add('hidden');
     const el = $('parse-error');
     el.classList.remove('hidden');
-    el.innerHTML = '<strong>Could not read that file.</strong><p class="sub" ' +
-      'style="margin:6px 0 0">' + esc(msg) + '</p>';
+    el.innerHTML = '<h2>This does not look like a Sentari evidence pack.</h2>' +
+      '<p class="prose">The file could not be read. If you were sent a ' +
+      '<code>.zip</code>, try dropping the whole archive; if you have already ' +
+      'extracted it, select <em>all</em> the files inside it at once. If it keeps ' +
+      'failing, ask whoever sent it to export a fresh copy.</p>' +
+      '<details><summary class="sub">Technical detail</summary>' +
+      '<p class="mono" style="margin:8px 0 0">' + esc(msg) + '</p></details>';
   }
 
-  function verifyObject(obj, extras) {
+  function verifyObject(obj, extras, fileName) {
     try {
-      show(obj, C.verifyJson(obj, currentAnchor || null, extras || {}), extras);
+      show(obj, C.verifyJson(obj, currentAnchor || null, extras || {}), extras, null, fileName);
     } catch (e) { fail(e.message); }
   }
 
   async function handleFiles(files) {
-    const byName = {};
-    let zip = null;
-    for (const f of files) {
-      if (/\.zip$/i.test(f.name)) zip = f;
-      else byName[f.name.replace(/^.*[\\/]/, '')] = await f.text();
-    }
-    if (zip) {
-      try {
-        return verifyBundle(await readZip(new Uint8Array(await zip.arrayBuffer())));
-      } catch (e) {
-        return fail(e.message + ' — you can also extract the archive and select ' +
-          'all of its files instead; the specification accepts that form too.');
+    if (!files || !files.length) return;
+    $('parse-error').classList.add('hidden');
+    $('busy').classList.remove('hidden');
+    // Let the "reading" state actually paint before the synchronous crypto.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    try {
+      const byName = {};
+      let zip = null;
+      for (const f of files) {
+        if (/\.zip$/i.test(f.name)) zip = f;
+        else byName[f.name.replace(/^.*[\\/]/, '')] = await f.text();
       }
+      if (zip) {
+        try {
+          return verifyBundle(await readZip(new Uint8Array(await zip.arrayBuffer())), zip.name);
+        } catch (e) {
+          return fail(e.message + ' — you can also extract the archive and select ' +
+            'all of its files instead; the specification accepts that form too.');
+        }
+      }
+      if (byName['evidence.json'] || byName['manifest.json']) {
+        return verifyBundle(byName, 'extracted pack (' + files.length + ' files)');
+      }
+      const only = Object.keys(byName);
+      if (only.length !== 1) {
+        return fail('Expected a single .json artifact, a .zip pack, or the files of an ' +
+          'extracted pack (evidence.json + manifest.json + ...).');
+      }
+      verifyObject(C.parseJson(byName[only[0]]), {}, only[0]);
+    } catch (e) {
+      fail(e && e.message ? e.message : String(e));
     }
-    if (byName['evidence.json'] || byName['manifest.json']) return verifyBundle(byName);
-    const only = Object.keys(byName);
-    if (only.length !== 1) {
-      return fail('Expected a single .json artifact, a .zip pack, or the files of an ' +
-        'extracted pack (evidence.json + manifest.json + ...).');
-    }
-    try { verifyObject(C.parseJson(byName[only[0]])); }
-    catch (e) { fail('That file is not valid JSON: ' + e.message); }
   }
 
-  function verifyBundle(members) {
+  function verifyBundle(members, fileName) {
     let obj;
     try { obj = C.parseJson(members['evidence.json']); }
     catch (e) { return fail('evidence.json is missing or not valid JSON.'); }
@@ -1611,7 +2005,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     try { r = C.verifyJson(obj, currentAnchor || null, extras); }
     catch (e) { return fail(e.message); }
     applyManifest(r, members);
-    show(obj, r, extras, members);
+    show(obj, r, extras, members, fileName);
   }
 
   function applyManifest(r, members) {
@@ -1631,7 +2025,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     let ok = true;
     if (pub && pub.length === 32) {
       const sig = C.b64ToBytes(man.signature || '');
-      ok = !!sig && C.ed25519Verify(sig, C.canonicalJson(man.payload), pub);
+      try {
+        ok = !!sig && C.ed25519Verify(sig, C.canonicalJson(man.payload), pub);
+      } catch (_e) { ok = false; }
       if (!ok) r.notes.push('the manifest signature did not verify');
     } else {
       r.notes.push('manifest carries no usable public key — its signature was not checked');
@@ -1639,7 +2035,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const files = (man.payload && man.payload.files) || [];
     const enc = new TextEncoder();
     for (const entry of files) {
-      const body = members[entry.name];
+      const body = members[entry && entry.name];
       if (body === undefined) continue;
       if (C.sha256Hex(enc.encode(body)) !== entry.sha256) {
         ok = false;
@@ -1647,13 +2043,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       }
     }
     for (const need of ['evidence.json', 'signature.json']) {
-      if (members[need] && !files.some((f) => f.name === need)) {
+      if (members[need] && !files.some((f) => f && f.name === need)) {
         ok = false;
         r.notes.push(need + ' is present but not listed in the signed manifest');
       }
     }
     r.manifest_valid = ok;
   }
+
+  const MAX_MEMBERS = 512;
+  const MAX_TOTAL = 256 * 1024 * 1024;   // refuse an archive bomb outright
 
   async function readZip(bytes) {
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -1663,10 +2062,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     }
     if (eocd < 0) throw new Error('Not a ZIP archive (no end-of-central-directory record)');
     const count = dv.getUint16(eocd + 10, true);
+    if (count > MAX_MEMBERS) throw new Error('ZIP archive has too many members');
     let p = dv.getUint32(eocd + 16, true);
     const out = {};
     const dec = new TextDecoder();
+    let totalOut = 0;
     for (let i = 0; i < count; i++) {
+      if (p < 0 || p + 46 > bytes.length) throw new Error('Corrupt ZIP central directory');
       if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('Corrupt ZIP central directory');
       const method = dv.getUint16(p + 10, true);
       const csize = dv.getUint32(p + 20, true);
@@ -1674,8 +2076,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       const extraLen = dv.getUint16(p + 30, true);
       const commentLen = dv.getUint16(p + 32, true);
       const lho = dv.getUint32(p + 42, true);
+      if (lho + 30 > bytes.length) throw new Error('Corrupt ZIP local header offset');
       const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
       const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+      if (start + csize > bytes.length) throw new Error('ZIP member extends past the archive');
       const raw = bytes.subarray(start, start + csize);
       let body;
       if (method === 0) body = raw;
@@ -1686,24 +2090,76 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
         body = new Uint8Array(await new Response(stream).arrayBuffer());
       } else throw new Error('Unsupported ZIP compression method ' + method + ' for ' + name);
+      totalOut += body.length;
+      if (totalOut > MAX_TOTAL) throw new Error('ZIP archive expands to an implausible size');
+      // Basename only: a member called ../../x must never be treated as a path.
       out[name.replace(/^.*[\\/]/, '')] = dec.decode(body);
       p += 46 + nameLen + extraLen + commentLen;
     }
     return out;
   }
 
+  /* ---- wiring ----------------------------------------------------------- */
   const drop = $('drop');
   const input = $('file');
-  drop.addEventListener('click', () => input.click());
+  $('choose').addEventListener('click', () => input.click());
   input.addEventListener('change', () => handleFiles([...input.files]));
-  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
-    e.preventDefault(); drop.classList.add('over');
-  }));
-  ['dragleave', 'drop'].forEach((ev) =>
-    drop.addEventListener(ev, () => drop.classList.remove('over')));
-  drop.addEventListener('drop', (e) => {
+  $('another').addEventListener('click', () => {
+    $('results').classList.add('hidden');
+    $('filebar').classList.add('hidden');
+    $('intro').classList.remove('hidden');
+    input.value = '';
+    current = null;
+    $('choose').focus();
+  });
+
+  // A near-miss drop would otherwise make the browser navigate away from the
+  // tool and render the JSON — on file:// that means digging the page out of
+  // the USB stick again. So the whole window is the target.
+  let veil = null;
+  const showVeil = () => {
+    if (veil) return;
+    veil = document.createElement('div');
+    veil.id = 'dragveil';
+    veil.textContent = 'Drop anywhere to check the file';
+    document.body.appendChild(veil);
+  };
+  const hideVeil = () => { if (veil) { veil.remove(); veil = null; } };
+  ['dragenter', 'dragover'].forEach((ev) => window.addEventListener(ev, (e) => {
     e.preventDefault();
-    handleFiles([...e.dataTransfer.files]);
+    showVeil();
+  }));
+  window.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) hideVeil(); });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    hideVeil();
+    handleFiles([...(e.dataTransfer ? e.dataTransfer.files : [])]);
+  });
+  drop.addEventListener('dragenter', () => drop.classList.add('over'));
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', () => drop.classList.remove('over'));
+
+  // Paper must be complete: open every disclosure and expand every truncated
+  // record table before printing, then put it all back.
+  window.addEventListener('beforeprint', () => {
+    document.querySelectorAll('button.showall').forEach((b) => b.click());
+    document.querySelectorAll('details').forEach((d) => {
+      d.dataset.wasOpen = String(d.open);
+      d.open = true;
+    });
+    document.querySelectorAll('.ctrl.hidden').forEach((el) => {
+      el.classList.remove('hidden');
+      el.dataset.unhid = '1';
+    });
+  });
+  window.addEventListener('afterprint', () => {
+    document.querySelectorAll('details').forEach((d) => {
+      if (d.dataset.wasOpen !== undefined) d.open = d.dataset.wasOpen === 'true';
+    });
+    document.querySelectorAll('.ctrl[data-unhid]').forEach((el) => {
+      el.classList.add('hidden');
+      delete el.dataset.unhid;
+    });
   });
 })();
 </script>
