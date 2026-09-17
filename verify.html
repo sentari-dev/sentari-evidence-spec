@@ -30,183 +30,198 @@
   --bg: #f7f8fa; --surface: #ffffff; --fg: #17202a; --fg-muted: #5b6672;
   --hairline: #dde3ea; --accent: #1f4e79;
   --ok-bg: #dcfce7; --ok-fg: #14532d; --ok-line: #4ade80;
-  --warn-bg: #fef9c3; --warn-fg: #713f12; --warn-line: #facc15;
+  --warn-bg: #fef9c3; --warn-fg: #713f12; --warn-line: #eab308;
   --bad-bg: #fee2e2; --bad-fg: #7f1d1d; --bad-line: #f87171;
   --na-bg: #f1f5f9; --na-fg: #475569; --na-line: #cbd5e1;
 }
 * { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--fg);
+body { margin: 0; background: var(--bg); color: var(--fg);
   font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        "Helvetica Neue", Arial, sans-serif;
-}
-.wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 64px; }
-h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
-h2 { font-size: 16px; margin: 30px 0 10px; }
-h3 { font-size: 14px; margin: 22px 0 8px; color: var(--fg-muted);
+        "Helvetica Neue", Arial, sans-serif; }
+.wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 64px; }
+h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 0 0 6px; letter-spacing: -0.01em; }
+h3 { font-size: 13px; margin: 20px 0 8px; color: var(--fg-muted);
      text-transform: uppercase; letter-spacing: 0.06em; }
 p { margin: 0 0 10px; }
 code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.5px; overflow-wrap: anywhere; }
 .sub { color: var(--fg-muted); font-size: 13.5px; }
 .card { background: var(--surface); border: 1px solid var(--hairline);
-        border-radius: 10px; padding: 18px 20px; margin: 0 0 18px; }
+  border-radius: 10px; padding: 16px 18px; margin: 0 0 14px; }
+.top { margin-bottom: 18px; }
+.hidden { display: none !important; }
 
 /* ---- drop zone ---- */
 #drop { border: 2px dashed var(--hairline); border-radius: 10px;
-  background: var(--surface); padding: 34px 20px; text-align: center; cursor: pointer; }
+  background: var(--surface); padding: 20px; text-align: center; cursor: pointer;
+  margin-top: 12px; }
 #drop.over { border-color: var(--accent); background: #eef4fa; }
-#drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+#drop strong { display: block; font-size: 15px; margin-bottom: 2px; }
 #drop input { display: none; }
+#parse-error { border-color: var(--bad-line); background: var(--bad-bg); }
 
-/* ---- verdict banner ---- */
-.verdict { border-radius: 10px; padding: 20px 22px; margin: 0 0 18px;
+/* ---- trust: a tag when fine, a wall when not ---- */
+.trustbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+  padding: 2px 0 10px; }
+.verdict { border-radius: 10px; padding: 16px 18px; margin: 0 0 12px;
   border: 1px solid; border-left-width: 8px; }
-.verdict h2 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.01em; }
+.verdict h2 { margin: 0 0 6px; font-size: 20px; }
 .verdict p { margin: 0; }
-.v-ok   { background: var(--ok-bg);   color: var(--ok-fg);   border-color: var(--ok-line); }
-.v-bad  { background: var(--bad-bg);  color: var(--bad-fg);  border-color: var(--bad-line); }
+.v-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
 .v-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
-
-/* ---- check rows ---- */
-.checks { list-style: none; margin: 0; padding: 0; }
-.checks li { display: flex; gap: 12px; align-items: baseline;
-  padding: 9px 0; border-top: 1px solid var(--hairline); }
-.checks li:first-child { border-top: 0; }
-.mark { flex: 0 0 18px; font-weight: 700; text-align: center; }
-.m-ok { color: #15803d; } .m-bad { color: #b91c1c; } .m-na { color: #94a3b8; }
-.checks .what { flex: 1; }
-.checks .flag { color: var(--fg-muted); font-size: 11.5px; }
-
-/* ---- key pin ---- */
-.pin label { display: block; font-weight: 600; margin-bottom: 6px; }
-.pin input { width: 100%; padding: 9px 11px; border: 1px solid var(--hairline);
+details.vdetails { margin: 0 0 20px; }
+details.vdetails > summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+details.vdetails > .card { margin-top: 10px; }
+.pinlabel { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13.5px; }
+#anchor { width: 100%; padding: 8px 10px; border: 1px solid var(--hairline);
   border-radius: 7px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
-.kv { display: grid; grid-template-columns: 170px 1fr; gap: 6px 14px; margin: 12px 0 0; }
-.kv dt { color: var(--fg-muted); font-size: 13px; }
-.kv dd { margin: 0; }
-.pill { display: inline-block; padding: 1px 9px; border-radius: 999px;
-  font-size: 12px; font-weight: 600; border: 1px solid; }
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { display: flex; gap: 10px; align-items: baseline; padding: 8px 0;
+  border-top: 1px solid var(--hairline); }
+.checks li:first-child { border-top: 0; }
+.mark { flex: 0 0 16px; font-weight: 700; text-align: center; }
+.m-ok { color: #15803d; } .m-bad { color: #b91c1c; } .m-na { color: #94a3b8; }
+.checks .what { flex: 1; font-size: 14px; }
+.checks .flag { color: var(--fg-muted); font-size: 11.5px; }
+.legend { font-size: 12.5px; color: var(--fg-muted); }
+
+/* ---- pills ---- */
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; border: 1px solid; }
 .p-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
 .p-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
 .p-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
 .p-na { background: var(--na-bg); color: var(--na-fg); border-color: var(--na-line); }
 
-/* ---- rendered pack ---- */
+/* ---- report head + scorecard ---- */
+.rpt-head h2 { margin-bottom: 2px; }
+.score { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
+.sc { flex: 1 1 110px; border: 1px solid var(--hairline); border-radius: 8px;
+  padding: 10px 12px; border-left-width: 4px; }
+.sc b { display: block; font-size: 24px; line-height: 1.1; }
+.sc span { font-size: 12px; color: var(--fg-muted); }
+.sc-non_compliant { border-left-color: var(--bad-line); background: #fff6f6; }
+.sc-at_risk { border-left-color: var(--warn-line); background: #fffdf0; }
+.sc-not_assessed { border-left-color: var(--na-line); background: #fafbfc; }
+.sc-compliant { border-left-color: var(--ok-line); background: #f6fffa; }
+.disclaimer { border-top: 1px solid var(--hairline); padding-top: 10px; margin: 0;
+  font-size: 12.5px; }
+
+/* ---- sections ---- */
+h2.sec, .sec { font-size: 15px; margin: 22px 0 10px; letter-spacing: 0; }
+.cnt { display: inline-block; min-width: 20px; padding: 0 7px; margin-left: 6px;
+  border-radius: 999px; background: var(--na-bg); color: var(--na-fg);
+  font-size: 12.5px; font-weight: 600; }
+details.sec-d { margin: 0 0 6px; }
+details.sec-d > summary { cursor: pointer; padding: 6px 0; }
+details.sec-d > summary .sec { display: inline; margin: 0; font-weight: 600; }
+
+/* ---- a control, as something to act on ---- */
+.ctrl { background: var(--surface); border: 1px solid var(--hairline);
+  border-left-width: 4px; border-radius: 8px; padding: 12px 14px; margin: 0 0 8px; }
+.ctrl-non_compliant { border-left-color: var(--bad-line); }
+.ctrl-at_risk { border-left-color: var(--warn-line); }
+.ctrl-not_assessed { border-left-color: var(--na-line); }
+.ctrl-compliant { border-left-color: var(--ok-line); }
+.ctrl-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.ctrl-ref { color: var(--fg-muted); font-size: 12px; }
+.ctrl-title { font-weight: 600; flex: 1 1 260px; }
+.ctrl-sum { margin: 7px 0 0; font-size: 14px; }
+.ctrl-meta { margin-top: 7px; font-size: 12px; }
+.findings { margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; }
+.findings li { margin-bottom: 3px; }
+.st { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px;
+  font-weight: 600; white-space: nowrap; border: 1px solid; }
+.st-compliant { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
+.st-at_risk { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.st-non_compliant { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
+.st-not_assessed { background: var(--na-bg); color: var(--na-fg); border-color: var(--na-line); }
+
+/* ---- evidence disclosures ---- */
+details.refs, details.src { margin-top: 8px; }
+details.refs > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); }
+details.refs ul { margin: 6px 0 2px; padding-left: 18px; font-size: 12px; }
+details.refs li { margin-bottom: 2px; }
+.norefs { font-size: 12px; margin-top: 8px; }
+details.src > summary { cursor: pointer; font-size: 14px; padding: 9px 0;
+  border-top: 1px solid var(--hairline); }
+details.src h3 { margin: 14px 0 6px; }
+.kv { display: grid; grid-template-columns: 170px 1fr; gap: 5px 14px; margin: 10px 0 0; }
+.kv dt { color: var(--fg-muted); font-size: 13px; }
+.kv dd { margin: 0; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--hairline);
+th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--hairline);
   vertical-align: top; }
 th { background: #eef1f5; font-size: 11.5px; text-transform: uppercase;
   letter-spacing: 0.05em; color: var(--fg-muted); }
 .scroll { overflow-x: auto; }
-.scroll table { min-width: 760px; }
 table.rec { min-width: 0; width: auto; }
 table.rec th, table.rec td { white-space: nowrap; }
-.st { display: inline-block; padding: 1px 8px; border-radius: 4px;
-  font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid; }
-.st-compliant     { background: var(--ok-bg);   color: var(--ok-fg);   border-color: var(--ok-line); }
-.st-at_risk       { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
-.st-non_compliant { background: var(--bad-bg);  color: var(--bad-fg);  border-color: var(--bad-line); }
-.st-not_assessed  { background: var(--na-bg);   color: var(--na-fg);   border-color: var(--na-line); }
-.score { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 4px; }
-.score div { flex: 1 1 110px; border: 1px solid var(--hairline); border-radius: 8px;
-  padding: 10px 12px; background: var(--surface); }
-.score b { display: block; font-size: 22px; line-height: 1.1; }
-.score span { font-size: 12px; color: var(--fg-muted); }
-.legend { font-size: 12.5px; color: var(--fg-muted); margin-top: 10px; }
-.notice { border-left: 4px solid var(--accent); background: #eef4fa;
-  padding: 12px 14px; border-radius: 0 7px 7px 0; font-size: 13.5px; }
-details.refs, details.src { margin-top: 8px; }
-details.refs > summary, details.src > summary {
-  cursor: pointer; font-size: 12.5px; color: var(--accent); }
-details.src > summary { font-size: 14px; color: var(--fg); padding: 9px 0;
-  border-top: 1px solid var(--hairline); }
-details.refs ul { margin: 6px 0 2px; padding-left: 18px; font-size: 12px; }
-details.refs li { margin-bottom: 2px; }
-details.src[open] > summary { margin-bottom: 4px; }
-details.src h3 { margin: 14px 0 6px; }
 button.showall { font: inherit; font-size: 12.5px; padding: 3px 10px; cursor: pointer;
   border: 1px solid var(--hairline); border-radius: 6px; background: var(--surface); }
 button.showall:hover { background: #eef4fa; }
-/* Printing must not swallow evidence behind a collapsed disclosure. */
-@media print { details { display: block; } details > summary { list-style: none; }
-  details:not([open]) > *:not(summary) { display: revert; } }
-.hidden { display: none !important; }
 .foot { margin-top: 34px; font-size: 12.5px; color: var(--fg-muted); }
 
 /* ---- print: the auditor puts paper in the evidence file ---- */
 @media print {
   body { background: #fff; }
   .wrap { max-width: none; padding: 0; }
-  #drop, .pin input, .noprint { display: none !important; }
-  .card, .verdict { break-inside: avoid; border-radius: 0; }
-  .verdict { border-left-width: 4px; }
+  .noprint, #drop, #anchor { display: none !important; }
+  .card, .ctrl, .verdict { break-inside: avoid; border-radius: 0; }
   a[href]:after { content: ""; }
   table { font-size: 10px; }
-  th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .st, .pill, .verdict, .score div { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Nothing may hide behind a collapsed disclosure on paper. */
+  details { display: block; }
+  details > summary { list-style: none; font-weight: 600; }
+  details:not([open]) > *:not(summary) { display: revert; }
+  th, .st, .pill, .sc, .verdict, .ctrl {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-<h1>Verify Sentari evidence</h1>
-<p class="sub">
-  Checks a signed evidence pack, SBOM or VEX on this machine. Nothing is
-  uploaded &mdash; this page makes no network requests at all. Save it and it
-  works offline, forever.
-</p>
+<header class="top noprint">
+  <h1>Verify Sentari evidence</h1>
+  <p class="sub">
+    Opens a signed evidence pack, SBOM or VEX and checks it on this machine.
+    Nothing is uploaded &mdash; this page makes no network requests at all.
+  </p>
+  <div id="drop">
+    <strong>Drop the file here</strong>
+    <span class="sub">or click to choose &middot; <code>.json</code> or <code>.zip</code>,
+    or select all the files from an extracted pack</span>
+    <input id="file" type="file" multiple accept=".json,.zip,.txt,.pdf">
+  </div>
+</header>
 
-<div id="drop" class="noprint">
-  <strong>Drop the file here</strong>
-  <span class="sub">or click to choose &middot; <code>.json</code> or <code>.zip</code>,
-  or select all the files from an extracted pack</span>
-  <input id="file" type="file" multiple accept=".json,.zip,.txt,.pdf">
-</div>
-
-<div id="parse-error" class="card hidden" style="border-color:var(--bad-line);background:var(--bad-bg)"></div>
+<div id="parse-error" class="card hidden"></div>
 
 <div id="results" class="hidden">
-
-  <div id="verdict" class="verdict"></div>
-
-  <div class="card">
-    <h3 style="margin-top:0">What was checked</h3>
-    <ul id="checks" class="checks"></ul>
-    <div id="notes" class="legend"></div>
-  </div>
-
-  <div class="card pin">
-    <h3 style="margin-top:0">Step 2 &mdash; confirm who signed it</h3>
-    <p class="sub" style="margin-bottom:12px">
-      Verifying the signature proves the file is internally consistent. It does
-      <strong>not</strong> prove who produced it. For that, compare the signing
-      key's fingerprint against the one the deployment publishes through a
-      channel you already trust &mdash; its documentation, a signed email, a
-      portal. <strong>Never take the fingerprint from this file.</strong>
-    </p>
-    <label for="anchor">The fingerprint you were given (out&#8209;of&#8209;band)</label>
-    <input id="anchor" class="noprint" placeholder="ed25519:..." spellcheck="false" autocomplete="off">
-    <dl class="kv">
-      <dt>Signed by this key</dt><dd><span id="pack-kid" class="mono"></span></dd>
-      <dt>You pinned</dt><dd><span id="anchor-shown" class="mono"></span></dd>
-      <dt>Result</dt><dd><span id="anchor-state" class="pill"></span></dd>
-    </dl>
-  </div>
-
+  <!-- When everything checks out, trust is a tag: one line, then out of the
+       way. When it does not, renderTrust replaces this with a banner that is
+       impossible to miss. The auditor's time belongs to the assessment, not
+       to the cryptography. -->
+  <div id="trust"></div>
   <div id="report"></div>
 </div>
 
 <div class="foot">
   <p>
-    This page is a third independent implementation of the open
+    A third independent implementation of the open
     <strong>Sentari evidence-pack specification</strong>, alongside the Python
     and Go reference verifiers in the same repository. All three are held to one
     published verdict table and agree on every committed conformance vector.
     Apache&#8209;2.0 &mdash; read the source of this file, check it, reimplement it.
   </p>
-  <p id="selfhash" class="sub"></p>
+  <p class="sub">
+    Needs no network and no installation. To confirm you are running the
+    published verifier and not an altered copy, compare this file&rsquo;s SHA&#8209;256
+    against <code>verify.html.sha256</code> in the repository &mdash; on macOS or
+    Linux: <code>shasum -a 256 verify.html</code>
+  </p>
 </div>
 
 </div>
@@ -1046,9 +1061,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
  * Sentari evidence verifier — UI
  * ---------------------------------------------------------------------------
  * Presentation only. Every verdict and every flag comes from the core block
- * above; nothing here decides whether something verified. Keeping the two
- * apart is deliberate: the part that must be conformance-gated is small,
- * self-contained, and extractable.
+ * above; nothing here decides whether something verified.
+ *
+ * Information architecture, deliberately:
+ *   - Whether the file is genuine is a ONE-TIME question. When the answer is
+ *     yes it is a tag, and the verification detail folds away behind it.
+ *     When the answer is no it becomes a wall, because then nothing else on
+ *     the page matters.
+ *   - Everything else is the assessment, and it leads with what needs acting
+ *     on, because that is what the reader came for.
  * =========================================================================== */
 'use strict';
 (() => {
@@ -1058,38 +1079,21 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-  /* ---- vocabulary shared with the PDF renderer -------------------------- */
   const STATUS_LABELS = {
     compliant: 'Compliant', at_risk: 'At risk',
     non_compliant: 'Non-compliant', not_assessed: 'Not assessed',
   };
-  const STATUS_ORDER = ['compliant', 'at_risk', 'non_compliant', 'not_assessed'];
+  const STATUS_ORDER = ['non_compliant', 'at_risk', 'not_assessed', 'compliant'];
   const GRADE_LABELS = { derived: 'Derived', observed: 'Observed', declared: 'Declared' };
-
-  /* The verdict, in a compliance professional's words, with the CONSEQUENCE
-     stated — lifted from AUDITOR_GUIDE.md rather than reinvented here. */
-  const VERDICTS = {
-    verified: {
-      cls: 'v-ok', head: 'VERIFIED',
-      body: 'Every hash recomputes and the signature checks out. You may rely on ' +
-            'this artifact’s contents, to the evidence grade each control declares.',
-    },
-    tampered: {
-      cls: 'v-bad', head: 'TAMPERED',
-      body: 'This artifact was altered after it was signed. Reject it, ask the ' +
-            'deployment operator for a freshly generated one, and treat the ' +
-            'discrepancy as an incident.',
-    },
-    key_unknown: {
-      cls: 'v-warn', head: 'SIGNER NOT RECOGNISED',
-      body: 'The mathematics is consistent, but the signing key is not the one you ' +
-            'pinned — rotated, foreign, or none supplied. This is not tampering. ' +
-            'Re-verify against the deployment’s current published fingerprint.',
-    },
+  /* What the reader must DO about each verdict — a status word alone tells a
+     compliance officer nothing about whether it lands on their worklist. */
+  const STATUS_MEANING = {
+    non_compliant: 'Requires remediation',
+    at_risk: 'Requires attention',
+    not_assessed: 'No evidence — assess manually',
+    compliant: 'Evidenced',
   };
 
-  /* Plain-language names for each flag, with the machine name kept alongside
-     for the technical reviewer who will want it. */
   const CHECK_ROWS = [
     ['payload_intact', 'The contents are unaltered since signing',
       'Layer 1 — the content hash recomputes over the canonical bytes'],
@@ -1105,48 +1109,60 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       'key_id == sha256(public key)[:32]'],
   ];
 
-  // The last thing loaded, so changing the pinned fingerprint re-verifies it
-  // without making the auditor drop the file again. Bundle members are kept
-  // too, or a re-pin would silently lose the manifest result.
+  const BAD_VERDICTS = {
+    tampered: {
+      cls: 'v-bad', head: 'TAMPERED — do not rely on this file',
+      body: 'This artifact was altered after it was signed. Nothing below can be ' +
+            'trusted. Reject it, ask the deployment operator for a freshly ' +
+            'generated one, and treat the discrepancy as an incident.',
+    },
+    key_unknown: {
+      cls: 'v-warn', head: 'Signer not recognised',
+      body: 'The file is internally consistent, but it is not signed by the key you ' +
+            'pinned — rotated, foreign, or none supplied yet. This is not ' +
+            'tampering. The contents below are shown, but their origin is unconfirmed.',
+    },
+  };
+
   let current = null;   // { obj, extras, members }
 
-  /* ---- verdict + checks ------------------------------------------------- */
-  function renderVerdict(r) {
+  /* ---- trust: a tag when it is fine, a wall when it is not -------------- */
+  function renderTrust(r, obj) {
     const v = C.verdictOf(r);
-    const spec = VERDICTS[v];
-    const kindName = r.kind === 'pack' ? 'an evidence pack'
-      : (r.kind === 'SBOM' || r.kind === 'VEX') ? 'a signed ' + r.kind
-      : 'an unrecognised file';
-    $('verdict').className = 'verdict ' + spec.cls;
-    $('verdict').innerHTML =
-      '<h2>' + spec.head + '</h2><p>' + spec.body + '</p>' +
-      '<p class="sub" style="margin-top:8px;opacity:.85">Checked as ' +
-      esc(kindName) + '.</p>';
+    const sig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
+    const kid = sig.key_id || '(none in file)';
+    const short = kid.length > 26 ? kid.slice(0, 22) + '…' : kid;
+    const anchor = ($('anchor') && $('anchor').value.trim()) || currentAnchor;
 
-    const rows = CHECK_ROWS.map(([flag, what, tech]) => {
+    let head;
+    if (v === 'verified') {
+      head = '<div class="trustbar"><span class="pill p-ok">&#10003; Verified</span>' +
+        '<span class="sub">Signature and contents check out on this machine. ' +
+        'Signed by <span class="mono">' + esc(short) + '</span></span></div>';
+    } else {
+      const spec = BAD_VERDICTS[v];
+      head = '<div class="verdict ' + spec.cls + '"><h2>' + spec.head + '</h2><p>' +
+        spec.body + '</p></div>';
+    }
+
+    const checks = CHECK_ROWS.map(([flag, what, tech]) => {
       const val = r[flag];
       let mark = '&ndash;', cls = 'm-na', suffix = '';
       if (val === true) { mark = '&#10003;'; cls = 'm-ok'; }
       else if (val === false) { mark = '&#10007;'; cls = 'm-bad'; }
-      else {
-        // null: distinguish "this class has none" from "not embedded".
-        if (flag === 'frozen_inputs_valid') {
-          suffix = r.layer2_na
-            ? ' — not applicable to this artifact class'
-            : ' — not included in this file, so not checkable offline';
-        } else if (flag === 'manifest_valid') {
-          suffix = ' — not applicable (no bundle manifest)';
-        } else if (flag === 'signature_valid') {
-          suffix = ' — could not be evaluated';
-        } else {
-          suffix = ' — not checked';
-        }
-      }
+      else if (flag === 'frozen_inputs_valid') {
+        suffix = r.layer2_na
+          ? ' — not applicable to this artifact class'
+          : ' — not included in this file, so not checkable offline';
+      } else if (flag === 'manifest_valid') {
+        suffix = ' — not applicable (no bundle manifest)';
+      } else if (flag === 'signature_valid') {
+        suffix = ' — could not be evaluated';
+      } else { suffix = ' — not checked'; }
       return '<li><span class="mark ' + cls + '">' + mark + '</span>' +
         '<span class="what">' + esc(what) + '<span class="sub">' + suffix + '</span>' +
         '<br><span class="flag">' + esc(tech) + ' &middot; ' + flag + '</span></span></li>';
     }).join('');
-    $('checks').innerHTML = rows;
 
     const per = Object.keys(r.per_source || {});
     let notes = '';
@@ -1158,133 +1174,86 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     if (r.notes && r.notes.length) {
       notes += '<p>' + r.notes.map((n) => '&middot; ' + esc(n)).join('<br>') + '</p>';
     }
-    $('notes').innerHTML = notes;
+
+    // The out-of-band pin lives in here too. It matters enormously, but it is
+    // a once-per-deployment act, not something to re-read on every pack.
+    const pinState = !anchor
+      ? '<span class="pill p-warn">Authenticity not established</span>'
+      : anchor === kid
+        ? '<span class="pill p-ok">Matches — this is the signer you expected</span>'
+        : '<span class="pill p-bad">Does NOT match the key you pinned</span>';
+
+    const openAttr = v === 'verified' ? '' : ' open';
+    $('trust').innerHTML = head +
+      '<details class="vdetails"' + openAttr + '><summary>How this was verified' +
+      (anchor ? '' : ' &middot; confirm who signed it') + '</summary>' +
+      '<div class="card">' +
+      '<h3 style="margin-top:0">What was checked</h3><ul class="checks">' + checks +
+      '</ul><div class="legend">' + notes + '</div>' +
+      '<h3>Who signed it</h3>' +
+      '<p class="sub">Verifying the signature proves the file is internally ' +
+      'consistent. It does <strong>not</strong> prove who produced it. Compare the ' +
+      'fingerprint against the one the deployment publishes through a channel you ' +
+      'already trust. <strong>Never take it from this file.</strong></p>' +
+      '<label class="pinlabel" for="anchor">The fingerprint you were given ' +
+      '(out&#8209;of&#8209;band)</label>' +
+      '<input id="anchor" class="noprint" placeholder="ed25519:..." spellcheck="false" ' +
+      'autocomplete="off" value="' + esc(anchor) + '">' +
+      '<dl class="kv"><dt>Signed by this key</dt><dd class="mono">' + esc(kid) + '</dd>' +
+      '<dt>Result</dt><dd>' + pinState + '</dd></dl>' +
+      '</div></details>';
+
+    $('anchor').addEventListener('input', onAnchorInput);
   }
 
-  /* ---- the out-of-band key pin ------------------------------------------ */
-  function renderPin(r, obj) {
-    const sig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
-    const kid = sig.key_id || '(none in file)';
-    $('pack-kid').textContent = kid;
-    const anchor = $('anchor').value.trim();
-    $('anchor-shown').textContent = anchor || '(nothing pinned yet)';
-    const el = $('anchor-state');
-    if (!anchor) {
-      el.className = 'pill p-warn';
-      el.textContent = 'Authenticity NOT established';
-    } else if (anchor === kid) {
-      el.className = 'pill p-ok';
-      el.textContent = 'Matches — this is the signer you expected';
-    } else {
-      el.className = 'pill p-bad';
-      el.textContent = 'Does NOT match the key you pinned';
-    }
+  let currentAnchor = '';
+  function onAnchorInput() {
+    currentAnchor = $('anchor').value.trim();
+    if (!current) return;
+    const pos = $('anchor').selectionStart;
+    let r;
+    try {
+      r = C.verifyJson(current.obj, currentAnchor || null, current.extras);
+    } catch (e) { return fail(e.message); }
+    if (current.members) applyManifest(r, current.members);
+    renderTrust(r, current.obj);
+    const el = $('anchor');
+    el.focus();
+    try { el.setSelectionRange(pos, pos); } catch (_e) {}
   }
 
-  /* ---- the rendered artifact -------------------------------------------- */
-  function renderPack(payload) {
-    const controls = payload.controls || [];
-    const coverage = payload.coverage || {};
-    const counts = {};
-    controls.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
-    const graded = controls.some((c) => c.evidence_class);
-
-    let h = '<div class="card">';
-    h += '<h2 style="margin-top:0">' + esc(payload.framework || 'Compliance') +
-      ' evidence pack</h2>';
-
-    /* The scope statement, ABOVE the numbers — it is what a CAB reads first. */
-    h += '<div class="notice"><strong>What this is:</strong> a signed, ' +
-      'machine-verifiable record of control results computed from the ' +
-      'organisation’s own system state. It <em>supports</em> a verification ' +
-      'or certification performed by the entity itself or by an accredited ' +
-      'conformity-assessment body. <strong>What it is not:</strong> a ' +
-      'certificate, an accredited audit opinion, or any presumption of ' +
-      'conformity.</div>';
-
-    h += '<dl class="kv" style="margin-top:16px">';
-    [['Framework', payload.framework_version || payload.framework],
-     ['Catalog version', payload.catalog_version],
-     ['Scope', (payload.scope && payload.scope.kind) || 'unknown'],
-     ['Generated', payload.generated_at],
-     ['Pack ID', payload.pack_id],
-     ['Content SHA-256', payload.content_sha256]].forEach(([k, v]) => {
-      if (v) h += '<dt>' + esc(k) + '</dt><dd class="mono">' + esc(v) + '</dd>';
-    });
-    h += '</dl></div>';
-
-    /* Scorecard — so nobody has to count rows. */
-    h += '<div class="card"><h3 style="margin-top:0">Assessment summary</h3>';
-    h += '<p class="sub">' + (coverage.assessed_control_ids || []).length +
-      ' control(s) assessed.</p><div class="score">';
-    STATUS_ORDER.forEach((s) => {
-      h += '<div><b>' + (counts[s] || 0) + '</b><span>' + STATUS_LABELS[s] + '</span></div>';
-    });
-    h += '</div></div>';
-
-    /* Control table with traffic lights and the evidence grade. */
-    h += '<div class="card"><h3 style="margin-top:0">Control results</h3><div class="scroll"><table><thead><tr>' +
-      '<th>Article</th><th>Control</th><th>Basis</th>' +
-      (graded ? '<th>Evidence</th>' : '') +
-      '<th>Status</th><th>Summary</th></tr></thead><tbody>';
-    controls.forEach((c) => {
-      const st = c.status || '';
-      h += '<tr><td class="mono">' + esc(c.article_ref) + '</td><td>' + esc(c.title) +
-        '</td><td>' + esc(c.basis) + '</td>' +
-        (graded ? '<td>' + esc(GRADE_LABELS[c.evidence_class] || c.evidence_class || '') + '</td>' : '') +
-        '<td><span class="st st-' + esc(st) + '">' +
-        esc(STATUS_LABELS[st] || st) + '</span></td><td>' + esc(c.summary) +
-        renderRefs(c) + '</td></tr>';
-    });
-    h += '</tbody></table></div>';
-    if (graded) {
-      h += '<p class="legend"><strong>Evidence grade</strong> — the provenance of ' +
-        'the evidence behind each verdict. <strong>Derived</strong>: measured from the ' +
-        'organisation’s own system state by Sentari’s collector. ' +
-        '<strong>Observed</strong>: read from a system of record and frozen and hashed ' +
-        'as read. <strong>Declared</strong>: a human attestation. This is independent ' +
-        'of <em>Basis</em>, which records how the verdict was reached.</p>';
-    }
-    h += '</div>';
-
-    /* The honesty ledger, as a first-class section. */
-    const notAssessed = coverage.not_assessed_framework_refs || [];
-    h += '<div class="card"><h3 style="margin-top:0">Scope of assessment</h3>';
-    h += '<p>This pack assesses ' + (coverage.assessed_control_ids || []).length +
-      ' control(s) of the ' + esc(payload.framework) +
-      ' framework. It is <strong>not</strong> a full-framework conformity assessment.</p>';
-    if (notAssessed.length) {
-      h += '<p class="sub">Framework obligations this pack does <strong>not</strong> assess:</p><ul>';
-      notAssessed.forEach((x) => { h += '<li>' + esc(x) + '</li>'; });
-      h += '</ul>';
-    }
-    h += '</div>';
-
-    /* Findings, deduped for display exactly as the PDF does. */
-    const findings = [];
-    controls.forEach((c) => (c.findings || []).forEach((f) => findings.push(c.id + ': ' + f)));
+  /* ---- one control, rendered as something you can act on --------------- */
+  function controlBlock(c, graded) {
+    const st = c.status || '';
+    let h = '<div class="ctrl ctrl-' + esc(st) + '">';
+    h += '<div class="ctrl-head"><span class="st st-' + esc(st) + '">' +
+      esc(STATUS_LABELS[st] || st) + '</span>' +
+      '<span class="ctrl-ref mono">' + esc(c.article_ref) + '</span>' +
+      '<span class="ctrl-title">' + esc(c.title) + '</span></div>';
+    h += '<p class="ctrl-sum">' + esc(c.summary) + '</p>';
+    const findings = c.findings || [];
     if (findings.length) {
       const seen = new Map();
       findings.forEach((f) => seen.set(f, (seen.get(f) || 0) + 1));
-      h += '<div class="card"><h3 style="margin-top:0">Findings</h3><ul>';
+      h += '<ul class="findings">';
       for (const [f, n] of seen) {
         h += '<li>' + esc(f) + (n > 1 ? ' <span class="sub">(&times;' + n + ')</span>' : '') + '</li>';
       }
-      h += '</ul></div>';
+      h += '</ul>';
     }
+    h += '<div class="ctrl-meta sub">' + esc(STATUS_MEANING[st] || '') +
+      ' &middot; basis: ' + esc(c.basis) +
+      (graded && c.evidence_class
+        ? ' &middot; evidence: ' + esc(GRADE_LABELS[c.evidence_class] || c.evidence_class)
+        : '') + '</div>';
+    h += renderRefs(c) + '</div>';
     return h;
   }
 
-  /* The per-control evidence pointers. A verdict a CAB cannot trace back to
-     something is an assertion, not evidence -- so every evidence_ref the
-     payload carries is shown, next to the verdict it supports. Refs are bare
-     strings, or {ref, class} objects when the pack grades each item
-     individually (spec section 7.2). */
   function renderRefs(c) {
     const refs = c.evidence_refs || [];
     if (!refs.length) {
-      return '<div class="sub" style="margin-top:5px">No evidence references recorded ' +
-        'for this control.</div>';
+      return '<div class="sub norefs">No evidence references recorded for this control.</div>';
     }
     const items = refs.map((x) => {
       const ref = (x && typeof x === 'object') ? x.ref : x;
@@ -1293,29 +1262,93 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         (cls ? ' <span class="pill p-na">' + esc(GRADE_LABELS[cls] || cls) + '</span>' : '') +
         '</li>';
     }).join('');
-    return '<details class="refs"><summary>Evidence references (' + refs.length +
+    return '<details class="refs"><summary>Evidence (' + refs.length +
       ')</summary><ul>' + items + '</ul></details>';
   }
 
-  /* The frozen evidence itself -- the substantiating records, not a summary of
-     them. This is what an assessor actually reviews: which devices, which CVEs,
-     who attested what and when. Each source is shown with its own hash and
-     whether this page re-derived it, so the data on screen is demonstrably the
-     data that was signed. */
+  /* ---- the assessment --------------------------------------------------- */
+  function renderPack(payload) {
+    const controls = payload.controls || [];
+    const coverage = payload.coverage || {};
+    const counts = {};
+    controls.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+    const graded = controls.some((c) => c.evidence_class);
+    const by = (s) => controls.filter((c) => c.status === s);
+
+    let h = '<div class="card rpt-head">';
+    h += '<h2>' + esc(payload.framework || 'Compliance') + ' — ' +
+      esc(payload.framework_version || '') + '</h2>';
+    h += '<p class="sub">' + esc((payload.scope && payload.scope.kind) || 'unknown') +
+      ' scope &middot; generated ' + esc(payload.generated_at) +
+      ' &middot; catalog ' + esc(payload.catalog_version) + '</p>';
+
+    // The scorecard IS the headline: what needs doing, at a glance.
+    h += '<div class="score">';
+    STATUS_ORDER.forEach((s) => {
+      h += '<div class="sc sc-' + s + '"><b>' + (counts[s] || 0) + '</b>' +
+        '<span>' + STATUS_LABELS[s] + '</span></div>';
+    });
+    h += '</div>';
+    h += '<p class="disclaimer sub">Supports a verification or certification ' +
+      'performed by the entity or an accredited conformity-assessment body. ' +
+      'Not a certificate, not an audit opinion, and no presumption of conformity. ' +
+      'Assesses ' + (coverage.assessed_control_ids || []).length +
+      ' control(s) &mdash; not the full framework.</p>';
+    h += '</div>';
+
+    // 1. What needs acting on, first and expanded.
+    const attention = by('non_compliant').concat(by('at_risk'));
+    h += '<h2 class="sec">Needs attention <span class="cnt">' + attention.length + '</span></h2>';
+    h += attention.length
+      ? attention.map((c) => controlBlock(c, graded)).join('')
+      : '<div class="card sub">No control came back non-compliant or at risk.</div>';
+
+    // 2. Controls with no evidence either way — a gap, not a pass.
+    const na = by('not_assessed');
+    if (na.length) {
+      h += '<details class="sec-d"><summary><span class="sec">No evidence ' +
+        '<span class="cnt">' + na.length + '</span></span>' +
+        '<span class="sub"> &mdash; assessed manually, or out of Sentari’s reach</span>' +
+        '</summary>' + na.map((c) => controlBlock(c, graded)).join('') + '</details>';
+    }
+
+    // 3. The passes, folded away.
+    const ok = by('compliant');
+    if (ok.length) {
+      h += '<details class="sec-d"><summary><span class="sec">Evidenced compliant ' +
+        '<span class="cnt">' + ok.length + '</span></span></summary>' +
+        ok.map((c) => controlBlock(c, graded)).join('') + '</details>';
+    }
+
+    // 4. The honesty ledger: obligations this pack does not speak to at all.
+    const gaps = coverage.not_assessed_framework_refs || [];
+    if (gaps.length) {
+      h += '<details class="sec-d"><summary><span class="sec">Outside this pack ' +
+        '<span class="cnt">' + gaps.length + '</span></span>' +
+        '<span class="sub"> &mdash; framework obligations it makes no claim about</span>' +
+        '</summary><div class="card"><ul>' +
+        gaps.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul></div></details>';
+    }
+    return h;
+  }
+
+  /* ---- the frozen records (folded: reached from a control's Evidence) --- */
   function renderFrozen(frozen, r) {
     if (!frozen || typeof frozen !== 'object') return '';
     const sources = frozen.sources || {};
     const names = Object.keys(sources).sort();
     if (!names.length) return '';
+    const total = names.reduce(
+      (n, k) => n + ((sources[k] && sources[k].rows) || []).length, 0);
 
-    let h = '<div class="card"><h3 style="margin-top:0">Frozen evidence</h3>';
-    h += '<p class="sub">These are the exact source records the control verdicts ' +
-      'above were computed from, captured when the pack was generated and hashed ' +
-      'individually. Every hash below was re-derived on this machine from this file ' +
-      'alone &mdash; so what you are reading is provably the data that was signed, ' +
-      'not a later retelling of it.</p>';
+    let h = '<details class="sec-d" id="frozen"><summary><span class="sec">' +
+      'Source records <span class="cnt">' + total + '</span></span>' +
+      '<span class="sub"> &mdash; the raw evidence every verdict was computed from</span>' +
+      '</summary><div class="card">';
+    h += '<p class="sub">Captured when the pack was generated and hashed ' +
+      'individually. Every hash below was re-derived on this machine from this ' +
+      'file alone, so this is provably the data that was signed.</p>';
 
-    // Any non-source metadata on the blob (e.g. as_of) is evidence too.
     const meta = Object.keys(frozen).filter((k) => k !== 'sources').sort();
     if (meta.length) {
       h += '<dl class="kv">';
@@ -1331,22 +1364,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       const src = sources[name] || {};
       const rows = Array.isArray(src.rows) ? src.rows : [];
       const ok = r.per_source ? r.per_source[name] : undefined;
-      const badge = ok === true
-        ? '<span class="pill p-ok">hash re-derived</span>'
-        : ok === false
-          ? '<span class="pill p-bad">HASH MISMATCH</span>'
-          : '<span class="pill p-na">not checked</span>';
-
+      const badge = ok === true ? '<span class="pill p-ok">hash re-derived</span>'
+        : ok === false ? '<span class="pill p-bad">HASH MISMATCH</span>'
+        : '<span class="pill p-na">not checked</span>';
       h += '<details class="src"><summary><strong>' + esc(name) + '</strong> &middot; ' +
         rows.length + ' record(s) ' + badge + '</summary>';
       h += '<dl class="kv"><dt>Source SHA-256</dt><dd class="mono">' +
         esc(src.sha256 || '(none)') + '</dd></dl>';
-
-      // An aggregate source carries summary keys alongside its rows (spec
-      // section 3.3). They are part of the signed evidence, so they are shown,
-      // not just the rows.
-      const summaryKeys = Object.keys(src)
-        .filter((k) => k !== 'rows' && k !== 'sha256').sort();
+      const summaryKeys = Object.keys(src).filter((k) => k !== 'rows' && k !== 'sha256').sort();
       if (summaryKeys.length) {
         h += '<h3>Source totals</h3><dl class="kv">';
         summaryKeys.forEach((k) => {
@@ -1357,21 +1382,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         });
         h += '</dl>';
       }
-
-      if (rows.length) {
-        h += '<h3>Records</h3>' + renderRows(name, rows);
-      } else if (!summaryKeys.length) {
-        h += '<p class="sub">This source froze no records.</p>';
-      }
+      if (rows.length) h += '<h3>Records</h3>' + renderRows(name, rows);
+      else if (!summaryKeys.length) h += '<p class="sub">This source froze no records.</p>';
       h += '</details>';
     });
-    return h + '</div>';
+    return h + '</div></details>';
   }
 
-  const ROW_PAGE = 100;   // enough to read; a full fleet export can be huge
+  const ROW_PAGE = 100;
 
-  /* Rows are arbitrary per source, so columns are the union of their keys --
-     nothing is dropped just because this page did not anticipate the field. */
   function renderRows(name, rows, showAll) {
     const cols = [];
     rows.forEach((row) => {
@@ -1395,9 +1414,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     });
     h += '</tbody></table></div>';
     if (!showAll && rows.length > ROW_PAGE) {
-      h += '<p class="sub noprint">Showing the first ' + ROW_PAGE + ' of ' +
-        rows.length + ' records. <button type="button" class="showall" ' +
-        'data-src="' + esc(name) + '">Show all ' + rows.length + '</button></p>';
+      h += '<p class="sub noprint">Showing the first ' + ROW_PAGE + ' of ' + rows.length +
+        ' records. <button type="button" class="showall" data-src="' + esc(name) +
+        '">Show all ' + rows.length + '</button></p>';
     }
     return h;
   }
@@ -1405,25 +1424,35 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   function renderDocument(obj, r) {
     const doc = obj.document || {};
     const comps = doc.components || [];
-    const stmts = doc.statements || (doc.vulnerabilities || []);
-    let h = '<div class="card"><h2 style="margin-top:0">Signed ' + esc(r.kind) + '</h2>';
-    h += '<div class="notice"><strong>What a verified signature here proves:</strong> ' +
-      'integrity (these exact bytes are unaltered) and provenance (produced by ' +
-      'this deployment’s evidence key). <strong>What it does not prove:</strong> ' +
-      'completeness (that every component or applicable vulnerability is listed), ' +
-      'correctness (that versions, licences or statuses are accurate), or ' +
-      'freshness — this is a point-in-time export, not a live view of the ' +
-      'fleet as it is right now.</div>';
-    h += '<dl class="kv" style="margin-top:16px">';
+    const stmts = doc.statements || doc.vulnerabilities || [];
+    let h = '<div class="card rpt-head"><h2>Signed ' + esc(r.kind) + '</h2>';
+    h += '<div class="score">';
+    if (comps.length) h += '<div class="sc"><b>' + comps.length + '</b><span>Components</span></div>';
+    if (Array.isArray(stmts) && stmts.length) {
+      h += '<div class="sc"><b>' + stmts.length + '</b><span>Statements</span></div>';
+    }
+    h += '</div>';
+    h += '<dl class="kv">';
     [['Format', doc.bomFormat || doc['@context'] || doc.spdxVersion || 'unknown'],
-     ['Spec version', doc.specVersion],
-     ['Document ID', doc.serialNumber || doc.id || doc.documentNamespace],
-     ['Components listed', comps.length ? String(comps.length) : null],
-     ['Statements', Array.isArray(stmts) && stmts.length ? String(stmts.length) : null]
+     ['Spec version', C.plain(doc.specVersion)],
+     ['Document ID', doc.serialNumber || doc.id || doc.documentNamespace]
     ].forEach(([k, v]) => {
       if (v) h += '<dt>' + esc(k) + '</dt><dd class="mono">' + esc(v) + '</dd>';
     });
-    h += '</dl></div>';
+    h += '</dl>';
+    h += '<p class="disclaimer sub">A verified signature here proves <strong>integrity</strong> ' +
+      '(these exact bytes are unaltered) and <strong>provenance</strong> (produced by this ' +
+      'deployment’s key). It does <strong>not</strong> prove completeness, correctness, or ' +
+      'freshness — this is a point-in-time export, not a live view of the fleet.</p>';
+    h += '</div>';
+    if (comps.length) {
+      h += '<details class="sec-d"><summary><span class="sec">Components ' +
+        '<span class="cnt">' + comps.length + '</span></span></summary><div class="card">' +
+        renderRows('components', comps.map((c) => ({
+          name: c.name, version: C.plain(c.version), type: c.type,
+          purl: c.purl, licenses: c.licenses ? JSON.stringify(c.licenses) : undefined,
+        }))) + '</div></details>';
+    }
     return h;
   }
 
@@ -1432,13 +1461,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     current = { obj, extras: extras || {}, members: members || null };
     $('parse-error').classList.add('hidden');
     $('results').classList.remove('hidden');
-    renderVerdict(r);
-    renderPin(r, obj);
+    renderTrust(r, obj);
     if (r.kind === 'pack') {
       const payload = (obj.payload && typeof obj.payload === 'object') ? obj.payload : obj;
       const frozen = (extras && extras.frozenInputs) || obj.frozen_inputs;
       $('report').innerHTML = renderPack(payload) + renderFrozen(frozen, r);
-      wireShowAll(frozen, r);
+      wireShowAll(frozen);
     } else if (r.kind === 'SBOM' || r.kind === 'VEX') {
       $('report').innerHTML = renderDocument(obj, r);
     } else {
@@ -1446,10 +1474,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     }
   }
 
-  /* "Show all" expands a truncated record table in place. Nothing is hidden
-     from the auditor -- truncation is only about not rendering 40,000 rows
-     before they have asked for them. */
-  function wireShowAll(frozen, r) {
+  function wireShowAll(frozen) {
     const sources = (frozen && frozen.sources) || {};
     document.querySelectorAll('button.showall').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1475,17 +1500,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   }
 
   function verifyObject(obj, extras) {
-    const anchor = $('anchor').value.trim() || null;
     try {
-      show(obj, C.verifyJson(obj, anchor, extras || {}), extras);
-    } catch (e) {
-      fail(e.message);
-    }
+      show(obj, C.verifyJson(obj, currentAnchor || null, extras || {}), extras);
+    } catch (e) { fail(e.message); }
   }
 
-  /* A .zip pack is the common hand-off. Members are deflated, so the archive
-     needs inflating; if this browser has no DecompressionStream we say so and
-     point at the directory form, which the specification blesses equally. */
   async function handleFiles(files) {
     const byName = {};
     let zip = null;
@@ -1495,35 +1514,26 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     }
     if (zip) {
       try {
-        const members = await readZip(new Uint8Array(await zip.arrayBuffer()));
-        return verifyBundle(members);
+        return verifyBundle(await readZip(new Uint8Array(await zip.arrayBuffer())));
       } catch (e) {
-        return fail(e.message + ' — you can also extract the archive and ' +
-          'select all of its files instead; the specification accepts that form too.');
+        return fail(e.message + ' — you can also extract the archive and select ' +
+          'all of its files instead; the specification accepts that form too.');
       }
     }
     if (byName['evidence.json'] || byName['manifest.json']) return verifyBundle(byName);
     const only = Object.keys(byName);
     if (only.length !== 1) {
-      return fail('Expected a single .json artifact, a .zip pack, or the files of ' +
-        'an extracted pack (evidence.json + manifest.json + ...).');
+      return fail('Expected a single .json artifact, a .zip pack, or the files of an ' +
+        'extracted pack (evidence.json + manifest.json + ...).');
     }
-    try {
-      verifyObject(C.parseJson(byName[only[0]]));
-    } catch (e) {
-      fail('That file is not valid JSON: ' + e.message);
-    }
+    try { verifyObject(C.parseJson(byName[only[0]])); }
+    catch (e) { fail('That file is not valid JSON: ' + e.message); }
   }
 
-  /* Directory / zip form: the signed manifest must be checked BEFORE
-     evidence.json is trusted (spec §3.5, §9 step 1). */
   function verifyBundle(members) {
     let obj;
-    try {
-      obj = C.parseJson(members['evidence.json']);
-    } catch (e) {
-      return fail('evidence.json is missing or not valid JSON.');
-    }
+    try { obj = C.parseJson(members['evidence.json']); }
+    catch (e) { return fail('evidence.json is missing or not valid JSON.'); }
     const extras = {};
     if (members['frozen_inputs.json']) {
       try { extras.frozenInputs = C.parseJson(members['frozen_inputs.json']); } catch (_e) {}
@@ -1531,13 +1541,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     if (members['signature.json'] && !obj.signature) {
       try { obj = { payload: obj, signature: C.parseJson(members['signature.json']) }; } catch (_e) {}
     }
-    const anchor = $('anchor').value.trim() || null;
     let r;
-    try {
-      r = C.verifyJson(obj, anchor, extras);
-    } catch (e) {
-      return fail(e.message);
-    }
+    try { r = C.verifyJson(obj, currentAnchor || null, extras); }
+    catch (e) { return fail(e.message); }
     applyManifest(r, members);
     show(obj, r, extras, members);
   }
@@ -1549,14 +1555,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       return;
     }
     let man;
-    try { man = C.parseJson(raw); } catch (_e) {
+    try { man = C.parseJson(raw); }
+    catch (_e) {
       r.manifest_valid = false;
       r.notes.push('manifest.json is not valid JSON');
       return;
     }
-    const pub = C.b64ToBytes((man.public_key) || '');
+    const pub = C.b64ToBytes(man.public_key || '');
     let ok = true;
-    // The manifest signs its own payload object directly (no inner envelope).
     if (pub && pub.length === 32) {
       const sig = C.b64ToBytes(man.signature || '');
       ok = !!sig && C.ed25519Verify(sig, C.canonicalJson(man.payload), pub);
@@ -1568,9 +1574,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const enc = new TextEncoder();
     for (const entry of files) {
       const body = members[entry.name];
-      if (body === undefined) continue;   // member not supplied; nothing to compare
-      const got = C.sha256Hex(enc.encode(body));
-      if (got !== entry.sha256) {
+      if (body === undefined) continue;
+      if (C.sha256Hex(enc.encode(body)) !== entry.sha256) {
         ok = false;
         r.notes.push('bundle member "' + entry.name + '" does not match the signed manifest');
       }
@@ -1584,7 +1589,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     r.manifest_valid = ok;
   }
 
-  /* Minimal ZIP reader: central directory, stored + deflated members. */
   async function readZip(bytes) {
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let eocd = -1;
@@ -1605,31 +1609,23 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       const commentLen = dv.getUint16(p + 32, true);
       const lho = dv.getUint32(p + 42, true);
       const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
-      // Local header: skip its own variable-length name + extra fields.
-      const lNameLen = dv.getUint16(lho + 26, true);
-      const lExtraLen = dv.getUint16(lho + 28, true);
-      const start = lho + 30 + lNameLen + lExtraLen;
+      const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
       const raw = bytes.subarray(start, start + csize);
       let body;
-      if (method === 0) {
-        body = raw;
-      } else if (method === 8) {
+      if (method === 0) body = raw;
+      else if (method === 8) {
         if (typeof DecompressionStream !== 'function') {
           throw new Error('This browser cannot decompress ZIP archives');
         }
-        const ds = new DecompressionStream('deflate-raw');
-        const stream = new Blob([raw]).stream().pipeThrough(ds);
+        const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
         body = new Uint8Array(await new Response(stream).arrayBuffer());
-      } else {
-        throw new Error('Unsupported ZIP compression method ' + method + ' for ' + name);
-      }
+      } else throw new Error('Unsupported ZIP compression method ' + method + ' for ' + name);
       out[name.replace(/^.*[\\/]/, '')] = dec.decode(body);
       p += 46 + nameLen + extraLen + commentLen;
     }
     return out;
   }
 
-  /* ---- wiring ----------------------------------------------------------- */
   const drop = $('drop');
   const input = $('file');
   drop.addEventListener('click', () => input.click());
@@ -1637,32 +1633,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
     e.preventDefault(); drop.classList.add('over');
   }));
-  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+  ['dragleave', 'drop'].forEach((ev) =>
+    drop.addEventListener(ev, () => drop.classList.remove('over')));
   drop.addEventListener('drop', (e) => {
     e.preventDefault();
     handleFiles([...e.dataTransfer.files]);
   });
-  // Re-pinning must not require re-dropping the file.
-  $('anchor').addEventListener('input', () => {
-    if (!current) return;
-    const anchor = $('anchor').value.trim() || null;
-    let r;
-    try {
-      r = C.verifyJson(current.obj, anchor, current.extras);
-    } catch (e) {
-      return fail(e.message);
-    }
-    if (current.members) applyManifest(r, current.members);
-    show(current.obj, r, current.extras, current.members);
-  });
-
-  // The hosted copy is a convenience, not the trust root. Showing this page's
-  // own hash lets an auditor confirm it is the file published in the repo.
-  $('selfhash').textContent =
-    'This page needs no network and no installation. To confirm you are running ' +
-    'the published verifier and not an altered copy, compare this file’s ' +
-    'SHA-256 against verify.html.sha256 in the repository — on macOS or Linux, ' +
-    'run: shasum -a 256 verify.html';
 })();
 </script>
 </body>
