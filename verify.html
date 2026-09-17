@@ -773,6 +773,7 @@ const EvidenceCore = (() => {
    *   false = checked and FAILED (hard integrity failure)
    */
   const PACK_CTX = 'sentari-evidence-pack/v1';
+  const SIGNING_ALGORITHM = 'ed25519';
   const ARTIFACT_CTX = {
     'sentari-sbom/v1': 'SBOM',
     'sentari-vex/v1': 'VEX',
@@ -830,6 +831,32 @@ const EvidenceCore = (() => {
   }
 
   /**
+   * Cross-check the detached block's own metadata against what we verified.
+   *
+   * Mirrors the Python reference exactly, including its tolerance rule: a
+   * field that is ABSENT is not an inconsistency, but a field that is present
+   * and disagrees is -- that is how a rewritten column presents itself, so it
+   * is tampering even when `value` happens to verify (spec section 5.5).
+   */
+  function checkSigFields(r, sig, expectedContentHash, expectedCtx) {
+    const notes = [];
+    if (sig.algorithm !== undefined && sig.algorithm !== SIGNING_ALGORITHM) {
+      notes.push('signature.algorithm=' + JSON.stringify(sig.algorithm) +
+        ' (expected ' + JSON.stringify(SIGNING_ALGORITHM) + ')');
+    }
+    if (expectedCtx !== null && sig.context !== undefined && sig.context !== expectedCtx) {
+      notes.push('signature.context=' + JSON.stringify(sig.context) +
+        ' (expected ' + JSON.stringify(expectedCtx) + ')');
+    }
+    if (expectedContentHash !== null && sig.content_sha256 !== undefined &&
+        sig.content_sha256 !== expectedContentHash) {
+      notes.push('signature.content_sha256 disagrees with the payload');
+    }
+    r.sig_fields_consistent = notes.length === 0;
+    notes.forEach((n) => r.notes.push(n));
+  }
+
+  /**
    * Verify the detached signature block against a known content hash.
    * Sets signature_valid / key_id_matches_material / key_id_matches_anchor.
    */
@@ -853,6 +880,12 @@ const EvidenceCore = (() => {
       if (sigBytes === null) {
         r.signature_valid = false;
         r.notes.push('signature value is not valid base64');
+      } else if (typeof contentHash !== 'string') {
+        // A block missing its content hash cannot produce a signed envelope.
+        // That is a verdict, not a crash: the contract is that this tool
+        // always reports verified/tampered/key_unknown (spec section 9).
+        r.signature_valid = false;
+        r.notes.push('signature block has no usable content_sha256');
       } else {
         // The domain-separated envelope. A pack binds BOTH hashes (§6.1); an
         // SBOM/VEX binds only the document hash (§12.3) — so a signature can
@@ -860,7 +893,12 @@ const EvidenceCore = (() => {
         const inner = frozenHash === null
           ? { content_sha256: contentHash, ctx: ctx }
           : { content_sha256: contentHash, ctx: ctx, frozen_inputs_sha256: frozenHash };
-        r.signature_valid = ed25519Verify(sigBytes, canonicalJson(inner), pub);
+        try {
+          r.signature_valid = ed25519Verify(sigBytes, canonicalJson(inner), pub);
+        } catch (e) {
+          r.signature_valid = false;
+          r.notes.push('signed envelope could not be canonicalised: ' + e.message);
+        }
         if (!r.signature_valid) r.notes.push('Ed25519 signature did not verify');
       }
     }
@@ -952,6 +990,9 @@ const EvidenceCore = (() => {
     if (!r.payload_intact) {
       r.notes.push('document hash does not match the signature block');
     }
+    // ctx is settled by dispatch and the content hash is Layer 1 above, so
+    // the algorithm is all that remains to cross-check for this class.
+    checkSigFields(r, sig, null, null);
     checkSignature(r, sig, sig.content_sha256, ctx, null, anchor);
     return r;
   }
@@ -1005,12 +1046,7 @@ const EvidenceCore = (() => {
     }
 
     // --- Detached-block metadata must agree with the hash-verified payload ---
-    // A block that disagrees is tampering: it is how a rewritten DB column
-    // would present itself (spec §5.5).
-    r.sig_fields_consistent = sig.content_sha256 === stored;
-    if (!r.sig_fields_consistent) {
-      r.notes.push('signature block content_sha256 disagrees with the payload');
-    }
+    checkSigFields(r, sig, stored, PACK_CTX);
 
     // --- Layer 2: frozen inputs (§5.3) ---
     if (frozen !== undefined && frozen !== null) {
