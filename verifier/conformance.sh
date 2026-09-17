@@ -91,6 +91,22 @@ else
   printf '  FAIL  browser  node not found - cannot verify verify.html\n'
 fi
 
+# verify.html is handed around as a standalone file (emailed, copied to a USB
+# stick), so its own SHA-256 is published alongside it. Checking it here means
+# the recorded value can never silently drift from the shipped page.
+echo "# published self-hash (verify.html.sha256)"
+if [ -f "$REPO/verify.html.sha256" ]; then
+  if ( cd "$REPO" && shasum -a 256 -c verify.html.sha256 >/dev/null 2>&1 ); then
+    pass=$((pass + 1)); printf '  PASS  verify.html matches its published SHA-256\n'
+  else
+    fail=$((fail + 1))
+    printf '  FAIL  verify.html does NOT match verify.html.sha256\n'
+    printf '        regenerate: shasum -a 256 verify.html > verify.html.sha256\n'
+  fi
+else
+  fail=$((fail + 1)); printf '  FAIL  verify.html.sha256 is missing\n'
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
   printf 'CONFORMANCE PASS — %s checks, all three verifiers agree.\n' "$pass"

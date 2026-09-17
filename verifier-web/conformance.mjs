@@ -65,7 +65,9 @@ function verdict(obj, anchor) {
 }
 
 function load(name) {
-  return JSON.parse(readFileSync(join(VECTORS, name), 'utf8'));
+  // Parse through the verifier's OWN parser, not JSON.parse: preserving
+  // number literals is part of what is being conformance-tested.
+  return EvidenceCore.parseJson(readFileSync(join(VECTORS, name), 'utf8'));
 }
 
 function runVector(name, kid) {
@@ -118,11 +120,44 @@ const x2 = load('vex-openvex.signed.golden.json');
 x2.signature.context = 'sentari-not-a-real-thing/v9';
 check('unknown signature context', 'tampered', verdict(x2, null));
 
-// A float anywhere in hashed content is unreproducible across languages
-// (spec 4 / 12.2) and must never reach a verified verdict.
+// A float INTRODUCED IN CODE (not read from the artifact, so it carries no
+// source literal) cannot be reproduced byte-for-byte and must never reach a
+// verified verdict.
 const f1 = load('sbom-cyclonedx.signed.golden.json');
 f1.document.specVersion = 1.6;
-check('float in hashed document', 'tampered', verdict(f1, null));
+check('code-introduced float in hashed content', 'tampered', verdict(f1, null));
+
+/* --- number-literal preservation ---------------------------------------- *
+ * The regression that matters most. JSON.parse turns the literal `1.0` into
+ * the double 1, which re-serialises as "1" -- different bytes, and a genuine
+ * pack reads as TAMPERED. Go avoids it with Decoder.UseNumber(); this
+ * implementation parses JSON itself to keep every number's source text.
+ *
+ * This is not hypothetical: Sentari's frozen `cve_findings` rows carry an
+ * `epss_score` straight from a float column, so `1.0` really does occur in
+ * signed content. The fixture below is a synthetic pack (signed with a
+ * throwaway key -- it is NOT a real Sentari artifact like the vectors above)
+ * that reproduces exactly that shape, with frozen inputs so Layer 2 is
+ * exercised too. Python and Go both verify it; so must this. */
+const FIXTURES = join(REPO, 'verifier-web', 'fixtures');
+function loadFixture(name) {
+  return EvidenceCore.parseJson(readFileSync(join(FIXTURES, name), 'utf8'));
+}
+console.log('# number-literal preservation (fixture with frozen inputs + float)');
+const fx = loadFixture('pack-with-frozen-inputs.fixture.json');
+check('fixture verifies (Layer 1 + Layer 2 + signature)', 'verified', verdict(fx, null));
+
+const fxr = EvidenceCore.verifyJson(loadFixture('pack-with-frozen-inputs.fixture.json'), null);
+check('Layer 2 re-derived every frozen source', true,
+  Object.values(fxr.per_source).length > 0 && Object.values(fxr.per_source).every(Boolean));
+check('the float literal survived the round trip', '1.0',
+  String(EvidenceCore.canonicalString(EvidenceCore.parseJson('{"epss_score":1.0}'))
+    .match(/:(.*)\}/)[1]));
+
+// ...and a mutated frozen row must still be caught.
+const fxt = loadFixture('pack-with-frozen-inputs.fixture.json');
+fxt.frozen_inputs.sources.cve_findings.rows[0].severity = 'low';
+check('mutated frozen evidence row', 'tampered', verdict(fxt, null));
 
 console.log('');
 if (fail === 0) {

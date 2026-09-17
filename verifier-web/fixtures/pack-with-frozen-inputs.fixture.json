@@ -1,0 +1,186 @@
+{
+  "catalog_version": "cyfun-be-v5",
+  "content_sha256": "7afd4067042c499fd49c18940c23e229448ecbd806f70e11706e6be07f1d6671",
+  "controls": [
+    {
+      "article_ref": "ID.AM-1 (Basic)",
+      "basis": "automated",
+      "evidence_class": "derived",
+      "evidence_refs": [
+        "frozen:cve_findings.scanned_device_count=2",
+        "device:ws-brussels-014",
+        "device:srv-ghent-002"
+      ],
+      "findings": [],
+      "id": "cyfun.id.am-1",
+      "not_applicable": false,
+      "status": "compliant",
+      "summary": "2 of 2 discovered devices covered by an agent (100.0%).",
+      "title": "Devices and systems within the organisation are inventoried"
+    },
+    {
+      "article_ref": "ID.RA-1 (Important)",
+      "basis": "automated",
+      "evidence_class": "derived",
+      "evidence_refs": [
+        "frozen:cve_findings.rows[0]",
+        "cve:CVE-2021-44228",
+        "kev:CVE-2021-44228"
+      ],
+      "findings": [
+        "CVE-2021-44228 (critical, KEV) in log4j-core 2.14.1 on ws-brussels-014"
+      ],
+      "id": "cyfun.id.ra-1",
+      "not_applicable": false,
+      "status": "non_compliant",
+      "summary": "1 critical CVE on the KEV catalogue is open and unremediated.",
+      "title": "Asset vulnerabilities are identified and documented"
+    },
+    {
+      "article_ref": "PR.IP-1 (Important)",
+      "basis": "attested",
+      "evidence_class": "declared",
+      "evidence_refs": [
+        {
+          "class": "declared",
+          "ref": "attestation:6f1c2d34-0a11-4c2b-9e77-5b21c4e0aa01"
+        }
+      ],
+      "findings": [],
+      "id": "cyfun.pr.ip-1",
+      "not_applicable": false,
+      "status": "compliant",
+      "summary": "Four-eyes attestation approved 2026-07-03; review due 2027-07-02.",
+      "title": "A baseline configuration of IT/OT systems is created and maintained"
+    },
+    {
+      "article_ref": "PR.DS-1 (Important)",
+      "basis": "attested",
+      "evidence_class": "declared",
+      "evidence_refs": [
+        {
+          "class": "declared",
+          "ref": "attestation:7a2d3e45-1b22-4d3c-8f66-6c32d5f1bb02"
+        }
+      ],
+      "findings": [
+        "Attestation pending approval since 2026-06-11"
+      ],
+      "id": "cyfun.pr.ds-1",
+      "not_applicable": false,
+      "status": "at_risk",
+      "summary": "Attestation is pending approval; the four-eyes requirement is unmet.",
+      "title": "Data-at-rest is protected"
+    }
+  ],
+  "coverage": {
+    "assessed_control_ids": [
+      "cyfun.id.am-1",
+      "cyfun.id.ra-1",
+      "cyfun.pr.ip-1",
+      "cyfun.pr.ds-1"
+    ],
+    "not_assessed_framework_refs": [
+      "CyFun Basic defines ~34 controls; this pack evidences 4 of them.",
+      "Governance beyond ID.GV-1, HR security and physical security are not assessed."
+    ]
+  },
+  "framework": "CYFUN",
+  "framework_version": "CyFun 2023 (CCB)",
+  "frozen_inputs": {
+    "as_of": "2026-09-17T08:00:00+00:00",
+    "sources": {
+      "attestations": {
+        "rows": [
+          {
+            "approved_at": "2026-07-03T11:02:00+00:00",
+            "approved_by_email": "dpo@agency.example",
+            "attestation_id": "6f1c2d34-0a11-4c2b-9e77-5b21c4e0aa01",
+            "attested_at": "2026-07-02T09:14:00+00:00",
+            "attested_by_email": "ciso@agency.example",
+            "control_id": "cyfun.pr.ip-1",
+            "evidence_sha256": "3b1f0c9d8a7e6f5d4c3b2a1908f7e6d5c4b3a291807f6e5d4c3b2a1908f7e6d5",
+            "review_due": "2027-07-02",
+            "status": "approved"
+          },
+          {
+            "approved_at": null,
+            "approved_by_email": null,
+            "attestation_id": "7a2d3e45-1b22-4d3c-8f66-6c32d5f1bb02",
+            "attested_at": "2026-06-11T14:40:00+00:00",
+            "attested_by_email": "ciso@agency.example",
+            "control_id": "cyfun.pr.ds-1",
+            "evidence_sha256": "9c8b7a6958473625140f3e2d1c0b9a8877665544332211009988776655443322",
+            "review_due": "2026-09-11",
+            "status": "pending_approval"
+          }
+        ],
+        "sha256": "0a84da6df5fdac3c989f90e94cd50f1e2bb38ef372f98a7264db07731be38625"
+      },
+      "cve_findings": {
+        "correlation_has_run": true,
+        "cve_cache_count": 284119,
+        "enabled_source_count": 3,
+        "excluded_sources": [],
+        "kev_data_available": true,
+        "kev_synced_at": "2026-09-16T02:00:00+00:00",
+        "resolved_count": 1,
+        "rows": [
+          {
+            "cve_id": "CVE-2021-44228",
+            "device_hostname": "ws-brussels-014",
+            "epss": 0.9744,
+            "first_seen": "2026-08-30T06:12:00+00:00",
+            "installed_version": "2.14.1",
+            "kev": true,
+            "package_name": "log4j-core",
+            "severity": "critical",
+            "status": "open"
+          },
+          {
+            "cve_id": "CVE-2023-32681",
+            "device_hostname": "ws-brussels-014",
+            "epss": 0.0041,
+            "first_seen": "2026-09-01T06:12:00+00:00",
+            "installed_version": "2.19.1",
+            "kev": false,
+            "package_name": "requests",
+            "severity": "medium",
+            "status": "open"
+          },
+          {
+            "cve_id": "CVE-2022-3602",
+            "device_hostname": "srv-ghent-002",
+            "epss": 0.1183,
+            "first_seen": "2026-09-02T06:12:00+00:00",
+            "installed_version": "1.1.1n",
+            "kev": false,
+            "package_name": "openssl",
+            "severity": "high",
+            "status": "risk_accepted"
+          }
+        ],
+        "scanned_device_count": 2,
+        "sha256": "4e79346557a5a1e541b941b4dbd383a75d889c6e68706045f9ef6d8fe3a39e55",
+        "uncorrelated_scan_count": 0
+      }
+    }
+  },
+  "generated_at": "2026-09-17T08:00:00+00:00",
+  "generated_by": "0f8da89e-f49e-49a7-a35c-babc2c783a5d",
+  "generated_by_email": "assessor@agency.example",
+  "pack_id": "b4e1a2c3-5d6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "scope": {
+    "kind": "fleet"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "content_sha256": "7afd4067042c499fd49c18940c23e229448ecbd806f70e11706e6be07f1d6671",
+    "context": "sentari-evidence-pack/v1",
+    "frozen_inputs_sha256": "6aba63f82e28f6d2c8e5571f8ca1679cc835e4a9c342ffcbd737b4e2496535af",
+    "key_id": "ed25519:8fc0042e7f75fa9d31359e9124349290",
+    "note": "Detached Ed25519 signature over the canonical JSON of {ctx, content_sha256, frozen_inputs_sha256}.",
+    "public_key": "oK2SgmS29Tq8TxSPFWBbXONe+BHbxdyJkP9Z41WUW4M=",
+    "value": "g5K8y+FQysfXdbXtJ9+rF1jYr5dihYX56l81+m+UC+S4HUOv11qbjDCOO/IQ0WU2ClmmbMaspawGEFBVToXOBg=="
+  }
+}

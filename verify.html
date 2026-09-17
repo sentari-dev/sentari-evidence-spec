@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verify Sentari Evidence</title>
+<!-- Inlined so the browser never probes /favicon.ico: "this page makes no
+     network requests" should be literally true, not nearly true. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%F0%9F%94%8E%3C/text%3E%3C/svg%3E">
 <!--
   Sentari evidence verifier — offline, single file, no dependencies.
 
@@ -21,8 +24,192 @@
 
   Apache-2.0. Read it, check it, reimplement it.
 -->
+<style>
+/* No web fonts: a font request is a network request. System stack only. */
+:root {
+  --bg: #f7f8fa; --surface: #ffffff; --fg: #17202a; --fg-muted: #5b6672;
+  --hairline: #dde3ea; --accent: #1f4e79;
+  --ok-bg: #dcfce7; --ok-fg: #14532d; --ok-line: #4ade80;
+  --warn-bg: #fef9c3; --warn-fg: #713f12; --warn-line: #facc15;
+  --bad-bg: #fee2e2; --bad-fg: #7f1d1d; --bad-line: #f87171;
+  --na-bg: #f1f5f9; --na-fg: #475569; --na-line: #cbd5e1;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+}
+.wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 64px; }
+h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 16px; margin: 30px 0 10px; }
+h3 { font-size: 14px; margin: 22px 0 8px; color: var(--fg-muted);
+     text-transform: uppercase; letter-spacing: 0.06em; }
+p { margin: 0 0 10px; }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; overflow-wrap: anywhere; }
+.sub { color: var(--fg-muted); font-size: 13.5px; }
+.card { background: var(--surface); border: 1px solid var(--hairline);
+        border-radius: 10px; padding: 18px 20px; margin: 0 0 18px; }
+
+/* ---- drop zone ---- */
+#drop { border: 2px dashed var(--hairline); border-radius: 10px;
+  background: var(--surface); padding: 34px 20px; text-align: center; cursor: pointer; }
+#drop.over { border-color: var(--accent); background: #eef4fa; }
+#drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+#drop input { display: none; }
+
+/* ---- verdict banner ---- */
+.verdict { border-radius: 10px; padding: 20px 22px; margin: 0 0 18px;
+  border: 1px solid; border-left-width: 8px; }
+.verdict h2 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.01em; }
+.verdict p { margin: 0; }
+.v-ok   { background: var(--ok-bg);   color: var(--ok-fg);   border-color: var(--ok-line); }
+.v-bad  { background: var(--bad-bg);  color: var(--bad-fg);  border-color: var(--bad-line); }
+.v-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+
+/* ---- check rows ---- */
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { display: flex; gap: 12px; align-items: baseline;
+  padding: 9px 0; border-top: 1px solid var(--hairline); }
+.checks li:first-child { border-top: 0; }
+.mark { flex: 0 0 18px; font-weight: 700; text-align: center; }
+.m-ok { color: #15803d; } .m-bad { color: #b91c1c; } .m-na { color: #94a3b8; }
+.checks .what { flex: 1; }
+.checks .flag { color: var(--fg-muted); font-size: 11.5px; }
+
+/* ---- key pin ---- */
+.pin label { display: block; font-weight: 600; margin-bottom: 6px; }
+.pin input { width: 100%; padding: 9px 11px; border: 1px solid var(--hairline);
+  border-radius: 7px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.kv { display: grid; grid-template-columns: 170px 1fr; gap: 6px 14px; margin: 12px 0 0; }
+.kv dt { color: var(--fg-muted); font-size: 13px; }
+.kv dd { margin: 0; }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; border: 1px solid; }
+.p-ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
+.p-bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
+.p-warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.p-na { background: var(--na-bg); color: var(--na-fg); border-color: var(--na-line); }
+
+/* ---- rendered pack ---- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--hairline);
+  vertical-align: top; }
+th { background: #eef1f5; font-size: 11.5px; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--fg-muted); }
+.scroll { overflow-x: auto; }
+.scroll table { min-width: 760px; }
+table.rec { min-width: 0; width: auto; }
+table.rec th, table.rec td { white-space: nowrap; }
+.st { display: inline-block; padding: 1px 8px; border-radius: 4px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid; }
+.st-compliant     { background: var(--ok-bg);   color: var(--ok-fg);   border-color: var(--ok-line); }
+.st-at_risk       { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.st-non_compliant { background: var(--bad-bg);  color: var(--bad-fg);  border-color: var(--bad-line); }
+.st-not_assessed  { background: var(--na-bg);   color: var(--na-fg);   border-color: var(--na-line); }
+.score { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 4px; }
+.score div { flex: 1 1 110px; border: 1px solid var(--hairline); border-radius: 8px;
+  padding: 10px 12px; background: var(--surface); }
+.score b { display: block; font-size: 22px; line-height: 1.1; }
+.score span { font-size: 12px; color: var(--fg-muted); }
+.legend { font-size: 12.5px; color: var(--fg-muted); margin-top: 10px; }
+.notice { border-left: 4px solid var(--accent); background: #eef4fa;
+  padding: 12px 14px; border-radius: 0 7px 7px 0; font-size: 13.5px; }
+details.refs, details.src { margin-top: 8px; }
+details.refs > summary, details.src > summary {
+  cursor: pointer; font-size: 12.5px; color: var(--accent); }
+details.src > summary { font-size: 14px; color: var(--fg); padding: 9px 0;
+  border-top: 1px solid var(--hairline); }
+details.refs ul { margin: 6px 0 2px; padding-left: 18px; font-size: 12px; }
+details.refs li { margin-bottom: 2px; }
+details.src[open] > summary { margin-bottom: 4px; }
+details.src h3 { margin: 14px 0 6px; }
+button.showall { font: inherit; font-size: 12.5px; padding: 3px 10px; cursor: pointer;
+  border: 1px solid var(--hairline); border-radius: 6px; background: var(--surface); }
+button.showall:hover { background: #eef4fa; }
+/* Printing must not swallow evidence behind a collapsed disclosure. */
+@media print { details { display: block; } details > summary { list-style: none; }
+  details:not([open]) > *:not(summary) { display: revert; } }
+.hidden { display: none !important; }
+.foot { margin-top: 34px; font-size: 12.5px; color: var(--fg-muted); }
+
+/* ---- print: the auditor puts paper in the evidence file ---- */
+@media print {
+  body { background: #fff; }
+  .wrap { max-width: none; padding: 0; }
+  #drop, .pin input, .noprint { display: none !important; }
+  .card, .verdict { break-inside: avoid; border-radius: 0; }
+  .verdict { border-left-width: 4px; }
+  a[href]:after { content: ""; }
+  table { font-size: 10px; }
+  th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .st, .pill, .verdict, .score div { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
 </head>
 <body>
+<div class="wrap">
+
+<h1>Verify Sentari evidence</h1>
+<p class="sub">
+  Checks a signed evidence pack, SBOM or VEX on this machine. Nothing is
+  uploaded &mdash; this page makes no network requests at all. Save it and it
+  works offline, forever.
+</p>
+
+<div id="drop" class="noprint">
+  <strong>Drop the file here</strong>
+  <span class="sub">or click to choose &middot; <code>.json</code> or <code>.zip</code>,
+  or select all the files from an extracted pack</span>
+  <input id="file" type="file" multiple accept=".json,.zip,.txt,.pdf">
+</div>
+
+<div id="parse-error" class="card hidden" style="border-color:var(--bad-line);background:var(--bad-bg)"></div>
+
+<div id="results" class="hidden">
+
+  <div id="verdict" class="verdict"></div>
+
+  <div class="card">
+    <h3 style="margin-top:0">What was checked</h3>
+    <ul id="checks" class="checks"></ul>
+    <div id="notes" class="legend"></div>
+  </div>
+
+  <div class="card pin">
+    <h3 style="margin-top:0">Step 2 &mdash; confirm who signed it</h3>
+    <p class="sub" style="margin-bottom:12px">
+      Verifying the signature proves the file is internally consistent. It does
+      <strong>not</strong> prove who produced it. For that, compare the signing
+      key's fingerprint against the one the deployment publishes through a
+      channel you already trust &mdash; its documentation, a signed email, a
+      portal. <strong>Never take the fingerprint from this file.</strong>
+    </p>
+    <label for="anchor">The fingerprint you were given (out&#8209;of&#8209;band)</label>
+    <input id="anchor" class="noprint" placeholder="ed25519:..." spellcheck="false" autocomplete="off">
+    <dl class="kv">
+      <dt>Signed by this key</dt><dd><span id="pack-kid" class="mono"></span></dd>
+      <dt>You pinned</dt><dd><span id="anchor-shown" class="mono"></span></dd>
+      <dt>Result</dt><dd><span id="anchor-state" class="pill"></span></dd>
+    </dl>
+  </div>
+
+  <div id="report"></div>
+</div>
+
+<div class="foot">
+  <p>
+    This page is a third independent implementation of the open
+    <strong>Sentari evidence-pack specification</strong>, alongside the Python
+    and Go reference verifiers in the same repository. All three are held to one
+    published verdict table and agree on every committed conformance vector.
+    Apache&#8209;2.0 &mdash; read the source of this file, check it, reimplement it.
+  </p>
+  <p id="selfhash" class="sub"></p>
+</div>
+
+</div>
 <script id="evidence-core">
 /* CORE-BEGIN — extracted verbatim by verifier-web/conformance.mjs. Do not
    move or rename these markers. */
@@ -350,6 +537,147 @@ const EvidenceCore = (() => {
    * ensure_ascii=False output for well-formed strings: short escapes for
    * \b \t \n \f \r, \uXXXX for other C0 controls, and raw UTF-8 otherwise.
    */
+  /* -------------------------------------------------------------------- *
+   * JSON parsing that PRESERVES number literals
+   * -------------------------------------------------------------------- *
+   * This is not paranoia, it is the only way this implementation can agree
+   * with the others on real packs.
+   *
+   * JSON.parse destroys the source form of a number: `1.0` becomes the double
+   * 1, and re-serialising gives "1" -- different bytes, different SHA-256,
+   * and a genuine pack would be reported TAMPERED. The Go reference verifier
+   * avoids this with Decoder.UseNumber(), which keeps the literal verbatim;
+   * Python happens to round-trip its own output because repr() reproduces it.
+   * JS has no equivalent, so we parse the text ourselves and carry every
+   * number through as its exact source characters.
+   *
+   * This matters in practice: Sentari's frozen `cve_findings` rows carry an
+   * `epss_score` straight from a float column, so `1.0` and `0.0` really do
+   * appear in signed content. Spec section 4 tells producers not to emit
+   * floats; a verifier that assumed they never would could not verify the
+   * packs that exist.
+   */
+  class RawNumber {
+    constructor(raw) { this.raw = raw; }
+    toString() { return this.raw; }
+    valueOf() { return Number(this.raw); }
+  }
+
+  function parseJson(text) {
+    let i = 0;
+    const err = (m) => { throw new SyntaxError(m + ' at position ' + i); };
+    const ws = () => {
+      while (i < text.length) {
+        const c = text.charCodeAt(i);
+        if (c === 32 || c === 9 || c === 10 || c === 13) i++;
+        else break;
+      }
+    };
+    function value() {
+      ws();
+      if (i >= text.length) err('unexpected end of input');
+      const c = text[i];
+      if (c === '{') return object();
+      if (c === '[') return array();
+      if (c === '"') return string();
+      if (c === 't') { lit('true'); return true; }
+      if (c === 'f') { lit('false'); return false; }
+      if (c === 'n') { lit('null'); return null; }
+      return number();
+    }
+    function lit(word) {
+      if (text.substr(i, word.length) !== word) err('invalid literal');
+      i += word.length;
+    }
+    function object() {
+      const out = {};
+      i++; ws();
+      if (text[i] === '}') { i++; return out; }
+      for (;;) {
+        ws();
+        if (text[i] !== '"') err('expected a key string');
+        const k = string();
+        ws();
+        if (text[i] !== ':') err('expected ":"');
+        i++;
+        out[k] = value();   // duplicate keys: last wins, as in Python and Go
+        ws();
+        if (text[i] === ',') { i++; continue; }
+        if (text[i] === '}') { i++; return out; }
+        err('expected "," or "}"');
+      }
+    }
+    function array() {
+      const out = [];
+      i++; ws();
+      if (text[i] === ']') { i++; return out; }
+      for (;;) {
+        out.push(value());
+        ws();
+        if (text[i] === ',') { i++; continue; }
+        if (text[i] === ']') { i++; return out; }
+        err('expected "," or "]"');
+      }
+    }
+    function string() {
+      i++;   // opening quote
+      let out = '';
+      for (;;) {
+        if (i >= text.length) err('unterminated string');
+        const c = text[i];
+        if (c === '"') { i++; return out; }
+        if (c === '\\') {
+          i++;
+          const e = text[i];
+          if (e === '"') out += '"';
+          else if (e === '\\') out += '\\';
+          else if (e === '/') out += '/';
+          else if (e === 'b') out += '\b';
+          else if (e === 'f') out += '\f';
+          else if (e === 'n') out += '\n';
+          else if (e === 'r') out += '\r';
+          else if (e === 't') out += '\t';
+          else if (e === 'u') {
+            const hex = text.substr(i + 1, 4);
+            if (!/^[0-9a-fA-F]{4}$/.test(hex)) err('bad \\u escape');
+            out += String.fromCharCode(parseInt(hex, 16));
+            i += 4;
+          } else err('bad escape');
+          i++;
+        } else {
+          out += c;
+          i++;
+        }
+      }
+    }
+    function number() {
+      const start = i;
+      if (text[i] === '-') i++;
+      while (i < text.length && text[i] >= '0' && text[i] <= '9') i++;
+      if (text[i] === '.') {
+        i++;
+        while (i < text.length && text[i] >= '0' && text[i] <= '9') i++;
+      }
+      if (text[i] === 'e' || text[i] === 'E') {
+        i++;
+        if (text[i] === '+' || text[i] === '-') i++;
+        while (i < text.length && text[i] >= '0' && text[i] <= '9') i++;
+      }
+      const raw = text.slice(start, i);
+      if (!/^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$/.test(raw)) {
+        err('invalid number "' + raw + '"');
+      }
+      return new RawNumber(raw);
+    }
+    const v = value();
+    ws();
+    if (i < text.length) err('trailing content after the JSON value');
+    return v;
+  }
+
+  /** Unwrap a RawNumber for display; everything else passes through. */
+  const plain = (v) => (v instanceof RawNumber ? v.raw : v);
+
   function codePointCompare(a, b) {
     // Array.from splits on code points, not UTF-16 units.
     const ca = Array.from(a), cb = Array.from(b);
@@ -368,6 +696,9 @@ const EvidenceCore = (() => {
     if (value === null) return 'null';
     const t = typeof value;
     if (t === 'boolean') return value ? 'true' : 'false';
+    // A number that came from parsed JSON carries its exact source text, so
+    // it re-serialises to the identical bytes the producer hashed.
+    if (value instanceof RawNumber) return value.raw;
     if (t === 'number') {
       if (!Number.isFinite(value)) {
         throw new NotHashable('non-finite number in hashed content');
@@ -698,7 +1029,7 @@ const EvidenceCore = (() => {
     // primitives (exported for the conformance harness and for review)
     sha256, sha256Hex, sha512, toHex, ed25519Verify,
     canonicalJson, canonicalString, canonicalSha256Hex, codePointCompare,
-    NotHashable, b64ToBytes,
+    NotHashable, b64ToBytes, RawNumber, parseJson, plain,
     // verification
     newResult, verdictOf, verifyJson, verifyPack, verifyDocument,
     checkFrozenInputs, checkSignature,
@@ -709,6 +1040,630 @@ const EvidenceCore = (() => {
 // Node (the conformance harness) vs browser.
 if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCore;
 /* CORE-END */
+</script>
+<script id="evidence-ui">
+/* ===========================================================================
+ * Sentari evidence verifier — UI
+ * ---------------------------------------------------------------------------
+ * Presentation only. Every verdict and every flag comes from the core block
+ * above; nothing here decides whether something verified. Keeping the two
+ * apart is deliberate: the part that must be conformance-gated is small,
+ * self-contained, and extractable.
+ * =========================================================================== */
+'use strict';
+(() => {
+  const C = EvidenceCore;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  /* ---- vocabulary shared with the PDF renderer -------------------------- */
+  const STATUS_LABELS = {
+    compliant: 'Compliant', at_risk: 'At risk',
+    non_compliant: 'Non-compliant', not_assessed: 'Not assessed',
+  };
+  const STATUS_ORDER = ['compliant', 'at_risk', 'non_compliant', 'not_assessed'];
+  const GRADE_LABELS = { derived: 'Derived', observed: 'Observed', declared: 'Declared' };
+
+  /* The verdict, in a compliance professional's words, with the CONSEQUENCE
+     stated — lifted from AUDITOR_GUIDE.md rather than reinvented here. */
+  const VERDICTS = {
+    verified: {
+      cls: 'v-ok', head: 'VERIFIED',
+      body: 'Every hash recomputes and the signature checks out. You may rely on ' +
+            'this artifact’s contents, to the evidence grade each control declares.',
+    },
+    tampered: {
+      cls: 'v-bad', head: 'TAMPERED',
+      body: 'This artifact was altered after it was signed. Reject it, ask the ' +
+            'deployment operator for a freshly generated one, and treat the ' +
+            'discrepancy as an incident.',
+    },
+    key_unknown: {
+      cls: 'v-warn', head: 'SIGNER NOT RECOGNISED',
+      body: 'The mathematics is consistent, but the signing key is not the one you ' +
+            'pinned — rotated, foreign, or none supplied. This is not tampering. ' +
+            'Re-verify against the deployment’s current published fingerprint.',
+    },
+  };
+
+  /* Plain-language names for each flag, with the machine name kept alongside
+     for the technical reviewer who will want it. */
+  const CHECK_ROWS = [
+    ['payload_intact', 'The contents are unaltered since signing',
+      'Layer 1 — the content hash recomputes over the canonical bytes'],
+    ['frozen_inputs_valid', 'The numbers match the frozen sources they came from',
+      'Layer 2 — every per-source hash re-derived from this file alone'],
+    ['signature_valid', 'Signed by the deployment’s evidence key',
+      'Ed25519 over the domain-separated envelope'],
+    ['sig_fields_consistent', 'The signature block agrees with the contents',
+      'detached-block metadata vs the hash-verified payload'],
+    ['manifest_valid', 'Every file in the bundle matches the signed manifest',
+      'zip manifest — raw-bytes hash of each member'],
+    ['key_id_matches_material', 'The key fingerprint matches the key itself',
+      'key_id == sha256(public key)[:32]'],
+  ];
+
+  // The last thing loaded, so changing the pinned fingerprint re-verifies it
+  // without making the auditor drop the file again. Bundle members are kept
+  // too, or a re-pin would silently lose the manifest result.
+  let current = null;   // { obj, extras, members }
+
+  /* ---- verdict + checks ------------------------------------------------- */
+  function renderVerdict(r) {
+    const v = C.verdictOf(r);
+    const spec = VERDICTS[v];
+    const kindName = r.kind === 'pack' ? 'an evidence pack'
+      : (r.kind === 'SBOM' || r.kind === 'VEX') ? 'a signed ' + r.kind
+      : 'an unrecognised file';
+    $('verdict').className = 'verdict ' + spec.cls;
+    $('verdict').innerHTML =
+      '<h2>' + spec.head + '</h2><p>' + spec.body + '</p>' +
+      '<p class="sub" style="margin-top:8px;opacity:.85">Checked as ' +
+      esc(kindName) + '.</p>';
+
+    const rows = CHECK_ROWS.map(([flag, what, tech]) => {
+      const val = r[flag];
+      let mark = '&ndash;', cls = 'm-na', suffix = '';
+      if (val === true) { mark = '&#10003;'; cls = 'm-ok'; }
+      else if (val === false) { mark = '&#10007;'; cls = 'm-bad'; }
+      else {
+        // null: distinguish "this class has none" from "not embedded".
+        if (flag === 'frozen_inputs_valid') {
+          suffix = r.layer2_na
+            ? ' — not applicable to this artifact class'
+            : ' — not included in this file, so not checkable offline';
+        } else if (flag === 'manifest_valid') {
+          suffix = ' — not applicable (no bundle manifest)';
+        } else if (flag === 'signature_valid') {
+          suffix = ' — could not be evaluated';
+        } else {
+          suffix = ' — not checked';
+        }
+      }
+      return '<li><span class="mark ' + cls + '">' + mark + '</span>' +
+        '<span class="what">' + esc(what) + '<span class="sub">' + suffix + '</span>' +
+        '<br><span class="flag">' + esc(tech) + ' &middot; ' + flag + '</span></span></li>';
+    }).join('');
+    $('checks').innerHTML = rows;
+
+    const per = Object.keys(r.per_source || {});
+    let notes = '';
+    if (per.length) {
+      const bad = per.filter((k) => !r.per_source[k]);
+      notes += '<p><strong>' + per.length + ' frozen source(s) re-derived</strong>' +
+        (bad.length ? ': failed &mdash; ' + esc(bad.join(', ')) : ': all match') + '.</p>';
+    }
+    if (r.notes && r.notes.length) {
+      notes += '<p>' + r.notes.map((n) => '&middot; ' + esc(n)).join('<br>') + '</p>';
+    }
+    $('notes').innerHTML = notes;
+  }
+
+  /* ---- the out-of-band key pin ------------------------------------------ */
+  function renderPin(r, obj) {
+    const sig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
+    const kid = sig.key_id || '(none in file)';
+    $('pack-kid').textContent = kid;
+    const anchor = $('anchor').value.trim();
+    $('anchor-shown').textContent = anchor || '(nothing pinned yet)';
+    const el = $('anchor-state');
+    if (!anchor) {
+      el.className = 'pill p-warn';
+      el.textContent = 'Authenticity NOT established';
+    } else if (anchor === kid) {
+      el.className = 'pill p-ok';
+      el.textContent = 'Matches — this is the signer you expected';
+    } else {
+      el.className = 'pill p-bad';
+      el.textContent = 'Does NOT match the key you pinned';
+    }
+  }
+
+  /* ---- the rendered artifact -------------------------------------------- */
+  function renderPack(payload) {
+    const controls = payload.controls || [];
+    const coverage = payload.coverage || {};
+    const counts = {};
+    controls.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+    const graded = controls.some((c) => c.evidence_class);
+
+    let h = '<div class="card">';
+    h += '<h2 style="margin-top:0">' + esc(payload.framework || 'Compliance') +
+      ' evidence pack</h2>';
+
+    /* The scope statement, ABOVE the numbers — it is what a CAB reads first. */
+    h += '<div class="notice"><strong>What this is:</strong> a signed, ' +
+      'machine-verifiable record of control results computed from the ' +
+      'organisation’s own system state. It <em>supports</em> a verification ' +
+      'or certification performed by the entity itself or by an accredited ' +
+      'conformity-assessment body. <strong>What it is not:</strong> a ' +
+      'certificate, an accredited audit opinion, or any presumption of ' +
+      'conformity.</div>';
+
+    h += '<dl class="kv" style="margin-top:16px">';
+    [['Framework', payload.framework_version || payload.framework],
+     ['Catalog version', payload.catalog_version],
+     ['Scope', (payload.scope && payload.scope.kind) || 'unknown'],
+     ['Generated', payload.generated_at],
+     ['Pack ID', payload.pack_id],
+     ['Content SHA-256', payload.content_sha256]].forEach(([k, v]) => {
+      if (v) h += '<dt>' + esc(k) + '</dt><dd class="mono">' + esc(v) + '</dd>';
+    });
+    h += '</dl></div>';
+
+    /* Scorecard — so nobody has to count rows. */
+    h += '<div class="card"><h3 style="margin-top:0">Assessment summary</h3>';
+    h += '<p class="sub">' + (coverage.assessed_control_ids || []).length +
+      ' control(s) assessed.</p><div class="score">';
+    STATUS_ORDER.forEach((s) => {
+      h += '<div><b>' + (counts[s] || 0) + '</b><span>' + STATUS_LABELS[s] + '</span></div>';
+    });
+    h += '</div></div>';
+
+    /* Control table with traffic lights and the evidence grade. */
+    h += '<div class="card"><h3 style="margin-top:0">Control results</h3><div class="scroll"><table><thead><tr>' +
+      '<th>Article</th><th>Control</th><th>Basis</th>' +
+      (graded ? '<th>Evidence</th>' : '') +
+      '<th>Status</th><th>Summary</th></tr></thead><tbody>';
+    controls.forEach((c) => {
+      const st = c.status || '';
+      h += '<tr><td class="mono">' + esc(c.article_ref) + '</td><td>' + esc(c.title) +
+        '</td><td>' + esc(c.basis) + '</td>' +
+        (graded ? '<td>' + esc(GRADE_LABELS[c.evidence_class] || c.evidence_class || '') + '</td>' : '') +
+        '<td><span class="st st-' + esc(st) + '">' +
+        esc(STATUS_LABELS[st] || st) + '</span></td><td>' + esc(c.summary) +
+        renderRefs(c) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    if (graded) {
+      h += '<p class="legend"><strong>Evidence grade</strong> — the provenance of ' +
+        'the evidence behind each verdict. <strong>Derived</strong>: measured from the ' +
+        'organisation’s own system state by Sentari’s collector. ' +
+        '<strong>Observed</strong>: read from a system of record and frozen and hashed ' +
+        'as read. <strong>Declared</strong>: a human attestation. This is independent ' +
+        'of <em>Basis</em>, which records how the verdict was reached.</p>';
+    }
+    h += '</div>';
+
+    /* The honesty ledger, as a first-class section. */
+    const notAssessed = coverage.not_assessed_framework_refs || [];
+    h += '<div class="card"><h3 style="margin-top:0">Scope of assessment</h3>';
+    h += '<p>This pack assesses ' + (coverage.assessed_control_ids || []).length +
+      ' control(s) of the ' + esc(payload.framework) +
+      ' framework. It is <strong>not</strong> a full-framework conformity assessment.</p>';
+    if (notAssessed.length) {
+      h += '<p class="sub">Framework obligations this pack does <strong>not</strong> assess:</p><ul>';
+      notAssessed.forEach((x) => { h += '<li>' + esc(x) + '</li>'; });
+      h += '</ul>';
+    }
+    h += '</div>';
+
+    /* Findings, deduped for display exactly as the PDF does. */
+    const findings = [];
+    controls.forEach((c) => (c.findings || []).forEach((f) => findings.push(c.id + ': ' + f)));
+    if (findings.length) {
+      const seen = new Map();
+      findings.forEach((f) => seen.set(f, (seen.get(f) || 0) + 1));
+      h += '<div class="card"><h3 style="margin-top:0">Findings</h3><ul>';
+      for (const [f, n] of seen) {
+        h += '<li>' + esc(f) + (n > 1 ? ' <span class="sub">(&times;' + n + ')</span>' : '') + '</li>';
+      }
+      h += '</ul></div>';
+    }
+    return h;
+  }
+
+  /* The per-control evidence pointers. A verdict a CAB cannot trace back to
+     something is an assertion, not evidence -- so every evidence_ref the
+     payload carries is shown, next to the verdict it supports. Refs are bare
+     strings, or {ref, class} objects when the pack grades each item
+     individually (spec section 7.2). */
+  function renderRefs(c) {
+    const refs = c.evidence_refs || [];
+    if (!refs.length) {
+      return '<div class="sub" style="margin-top:5px">No evidence references recorded ' +
+        'for this control.</div>';
+    }
+    const items = refs.map((x) => {
+      const ref = (x && typeof x === 'object') ? x.ref : x;
+      const cls = (x && typeof x === 'object') ? x.class : null;
+      return '<li><span class="mono">' + esc(ref) + '</span>' +
+        (cls ? ' <span class="pill p-na">' + esc(GRADE_LABELS[cls] || cls) + '</span>' : '') +
+        '</li>';
+    }).join('');
+    return '<details class="refs"><summary>Evidence references (' + refs.length +
+      ')</summary><ul>' + items + '</ul></details>';
+  }
+
+  /* The frozen evidence itself -- the substantiating records, not a summary of
+     them. This is what an assessor actually reviews: which devices, which CVEs,
+     who attested what and when. Each source is shown with its own hash and
+     whether this page re-derived it, so the data on screen is demonstrably the
+     data that was signed. */
+  function renderFrozen(frozen, r) {
+    if (!frozen || typeof frozen !== 'object') return '';
+    const sources = frozen.sources || {};
+    const names = Object.keys(sources).sort();
+    if (!names.length) return '';
+
+    let h = '<div class="card"><h3 style="margin-top:0">Frozen evidence</h3>';
+    h += '<p class="sub">These are the exact source records the control verdicts ' +
+      'above were computed from, captured when the pack was generated and hashed ' +
+      'individually. Every hash below was re-derived on this machine from this file ' +
+      'alone &mdash; so what you are reading is provably the data that was signed, ' +
+      'not a later retelling of it.</p>';
+
+    // Any non-source metadata on the blob (e.g. as_of) is evidence too.
+    const meta = Object.keys(frozen).filter((k) => k !== 'sources').sort();
+    if (meta.length) {
+      h += '<dl class="kv">';
+      meta.forEach((k) => {
+        const v = C.plain(frozen[k]);
+        h += '<dt>' + esc(k) + '</dt><dd class="mono">' +
+          esc(typeof v === 'object' && v !== null ? JSON.stringify(v) : v) + '</dd>';
+      });
+      h += '</dl>';
+    }
+
+    names.forEach((name) => {
+      const src = sources[name] || {};
+      const rows = Array.isArray(src.rows) ? src.rows : [];
+      const ok = r.per_source ? r.per_source[name] : undefined;
+      const badge = ok === true
+        ? '<span class="pill p-ok">hash re-derived</span>'
+        : ok === false
+          ? '<span class="pill p-bad">HASH MISMATCH</span>'
+          : '<span class="pill p-na">not checked</span>';
+
+      h += '<details class="src"><summary><strong>' + esc(name) + '</strong> &middot; ' +
+        rows.length + ' record(s) ' + badge + '</summary>';
+      h += '<dl class="kv"><dt>Source SHA-256</dt><dd class="mono">' +
+        esc(src.sha256 || '(none)') + '</dd></dl>';
+
+      // An aggregate source carries summary keys alongside its rows (spec
+      // section 3.3). They are part of the signed evidence, so they are shown,
+      // not just the rows.
+      const summaryKeys = Object.keys(src)
+        .filter((k) => k !== 'rows' && k !== 'sha256').sort();
+      if (summaryKeys.length) {
+        h += '<h3>Source totals</h3><dl class="kv">';
+        summaryKeys.forEach((k) => {
+          const v = C.plain(src[k]);
+          h += '<dt>' + esc(k) + '</dt><dd class="mono">' +
+            esc(v === null ? 'null' : (typeof v === 'object' ? JSON.stringify(v) : v)) +
+            '</dd>';
+        });
+        h += '</dl>';
+      }
+
+      if (rows.length) {
+        h += '<h3>Records</h3>' + renderRows(name, rows);
+      } else if (!summaryKeys.length) {
+        h += '<p class="sub">This source froze no records.</p>';
+      }
+      h += '</details>';
+    });
+    return h + '</div>';
+  }
+
+  const ROW_PAGE = 100;   // enough to read; a full fleet export can be huge
+
+  /* Rows are arbitrary per source, so columns are the union of their keys --
+     nothing is dropped just because this page did not anticipate the field. */
+  function renderRows(name, rows, showAll) {
+    const cols = [];
+    rows.forEach((row) => {
+      if (row && typeof row === 'object' && !Array.isArray(row)) {
+        Object.keys(row).forEach((k) => { if (!cols.includes(k)) cols.push(k); });
+      }
+    });
+    const shown = showAll ? rows : rows.slice(0, ROW_PAGE);
+    let h = '<div class="scroll"><table class="rec"><thead><tr>';
+    cols.forEach((c) => { h += '<th>' + esc(c) + '</th>'; });
+    h += '</tr></thead><tbody>';
+    shown.forEach((row) => {
+      h += '<tr>';
+      cols.forEach((c) => {
+        const v = C.plain(row ? row[c] : undefined);
+        const txt = v === undefined ? '' : v === null ? 'null'
+          : typeof v === 'object' ? JSON.stringify(v) : String(v);
+        h += '<td class="mono">' + esc(txt) + '</td>';
+      });
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    if (!showAll && rows.length > ROW_PAGE) {
+      h += '<p class="sub noprint">Showing the first ' + ROW_PAGE + ' of ' +
+        rows.length + ' records. <button type="button" class="showall" ' +
+        'data-src="' + esc(name) + '">Show all ' + rows.length + '</button></p>';
+    }
+    return h;
+  }
+
+  function renderDocument(obj, r) {
+    const doc = obj.document || {};
+    const comps = doc.components || [];
+    const stmts = doc.statements || (doc.vulnerabilities || []);
+    let h = '<div class="card"><h2 style="margin-top:0">Signed ' + esc(r.kind) + '</h2>';
+    h += '<div class="notice"><strong>What a verified signature here proves:</strong> ' +
+      'integrity (these exact bytes are unaltered) and provenance (produced by ' +
+      'this deployment’s evidence key). <strong>What it does not prove:</strong> ' +
+      'completeness (that every component or applicable vulnerability is listed), ' +
+      'correctness (that versions, licences or statuses are accurate), or ' +
+      'freshness — this is a point-in-time export, not a live view of the ' +
+      'fleet as it is right now.</div>';
+    h += '<dl class="kv" style="margin-top:16px">';
+    [['Format', doc.bomFormat || doc['@context'] || doc.spdxVersion || 'unknown'],
+     ['Spec version', doc.specVersion],
+     ['Document ID', doc.serialNumber || doc.id || doc.documentNamespace],
+     ['Components listed', comps.length ? String(comps.length) : null],
+     ['Statements', Array.isArray(stmts) && stmts.length ? String(stmts.length) : null]
+    ].forEach(([k, v]) => {
+      if (v) h += '<dt>' + esc(k) + '</dt><dd class="mono">' + esc(v) + '</dd>';
+    });
+    h += '</dl></div>';
+    return h;
+  }
+
+  /* ---- drive ------------------------------------------------------------ */
+  function show(obj, r, extras, members) {
+    current = { obj, extras: extras || {}, members: members || null };
+    $('parse-error').classList.add('hidden');
+    $('results').classList.remove('hidden');
+    renderVerdict(r);
+    renderPin(r, obj);
+    if (r.kind === 'pack') {
+      const payload = (obj.payload && typeof obj.payload === 'object') ? obj.payload : obj;
+      const frozen = (extras && extras.frozenInputs) || obj.frozen_inputs;
+      $('report').innerHTML = renderPack(payload) + renderFrozen(frozen, r);
+      wireShowAll(frozen, r);
+    } else if (r.kind === 'SBOM' || r.kind === 'VEX') {
+      $('report').innerHTML = renderDocument(obj, r);
+    } else {
+      $('report').innerHTML = '';
+    }
+  }
+
+  /* "Show all" expands a truncated record table in place. Nothing is hidden
+     from the auditor -- truncation is only about not rendering 40,000 rows
+     before they have asked for them. */
+  function wireShowAll(frozen, r) {
+    const sources = (frozen && frozen.sources) || {};
+    document.querySelectorAll('button.showall').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const name = btn.getAttribute('data-src');
+        const rows = (sources[name] && sources[name].rows) || [];
+        const holder = btn.closest('details');
+        const old = holder.querySelector('.scroll');
+        if (!old) return;
+        const wrap = document.createElement('div');
+        wrap.innerHTML = renderRows(name, rows, true);
+        old.replaceWith(wrap.firstElementChild);
+        btn.closest('p').remove();
+      });
+    });
+  }
+
+  function fail(msg) {
+    $('results').classList.add('hidden');
+    const el = $('parse-error');
+    el.classList.remove('hidden');
+    el.innerHTML = '<strong>Could not read that file.</strong><p class="sub" ' +
+      'style="margin:6px 0 0">' + esc(msg) + '</p>';
+  }
+
+  function verifyObject(obj, extras) {
+    const anchor = $('anchor').value.trim() || null;
+    try {
+      show(obj, C.verifyJson(obj, anchor, extras || {}), extras);
+    } catch (e) {
+      fail(e.message);
+    }
+  }
+
+  /* A .zip pack is the common hand-off. Members are deflated, so the archive
+     needs inflating; if this browser has no DecompressionStream we say so and
+     point at the directory form, which the specification blesses equally. */
+  async function handleFiles(files) {
+    const byName = {};
+    let zip = null;
+    for (const f of files) {
+      if (/\.zip$/i.test(f.name)) zip = f;
+      else byName[f.name.replace(/^.*[\\/]/, '')] = await f.text();
+    }
+    if (zip) {
+      try {
+        const members = await readZip(new Uint8Array(await zip.arrayBuffer()));
+        return verifyBundle(members);
+      } catch (e) {
+        return fail(e.message + ' — you can also extract the archive and ' +
+          'select all of its files instead; the specification accepts that form too.');
+      }
+    }
+    if (byName['evidence.json'] || byName['manifest.json']) return verifyBundle(byName);
+    const only = Object.keys(byName);
+    if (only.length !== 1) {
+      return fail('Expected a single .json artifact, a .zip pack, or the files of ' +
+        'an extracted pack (evidence.json + manifest.json + ...).');
+    }
+    try {
+      verifyObject(C.parseJson(byName[only[0]]));
+    } catch (e) {
+      fail('That file is not valid JSON: ' + e.message);
+    }
+  }
+
+  /* Directory / zip form: the signed manifest must be checked BEFORE
+     evidence.json is trusted (spec §3.5, §9 step 1). */
+  function verifyBundle(members) {
+    let obj;
+    try {
+      obj = C.parseJson(members['evidence.json']);
+    } catch (e) {
+      return fail('evidence.json is missing or not valid JSON.');
+    }
+    const extras = {};
+    if (members['frozen_inputs.json']) {
+      try { extras.frozenInputs = C.parseJson(members['frozen_inputs.json']); } catch (_e) {}
+    }
+    if (members['signature.json'] && !obj.signature) {
+      try { obj = { payload: obj, signature: C.parseJson(members['signature.json']) }; } catch (_e) {}
+    }
+    const anchor = $('anchor').value.trim() || null;
+    let r;
+    try {
+      r = C.verifyJson(obj, anchor, extras);
+    } catch (e) {
+      return fail(e.message);
+    }
+    applyManifest(r, members);
+    show(obj, r, extras, members);
+  }
+
+  function applyManifest(r, members) {
+    const raw = members['manifest.json'];
+    if (!raw) {
+      r.notes.push('no manifest.json in this bundle — member hashes not checked');
+      return;
+    }
+    let man;
+    try { man = C.parseJson(raw); } catch (_e) {
+      r.manifest_valid = false;
+      r.notes.push('manifest.json is not valid JSON');
+      return;
+    }
+    const pub = C.b64ToBytes((man.public_key) || '');
+    let ok = true;
+    // The manifest signs its own payload object directly (no inner envelope).
+    if (pub && pub.length === 32) {
+      const sig = C.b64ToBytes(man.signature || '');
+      ok = !!sig && C.ed25519Verify(sig, C.canonicalJson(man.payload), pub);
+      if (!ok) r.notes.push('the manifest signature did not verify');
+    } else {
+      r.notes.push('manifest carries no usable public key — its signature was not checked');
+    }
+    const files = (man.payload && man.payload.files) || [];
+    const enc = new TextEncoder();
+    for (const entry of files) {
+      const body = members[entry.name];
+      if (body === undefined) continue;   // member not supplied; nothing to compare
+      const got = C.sha256Hex(enc.encode(body));
+      if (got !== entry.sha256) {
+        ok = false;
+        r.notes.push('bundle member "' + entry.name + '" does not match the signed manifest');
+      }
+    }
+    for (const need of ['evidence.json', 'signature.json']) {
+      if (members[need] && !files.some((f) => f.name === need)) {
+        ok = false;
+        r.notes.push(need + ' is present but not listed in the signed manifest');
+      }
+    }
+    r.manifest_valid = ok;
+  }
+
+  /* Minimal ZIP reader: central directory, stored + deflated members. */
+  async function readZip(bytes) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let eocd = -1;
+    for (let i = bytes.length - 22; i >= 0 && i > bytes.length - 65558; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('Not a ZIP archive (no end-of-central-directory record)');
+    const count = dv.getUint16(eocd + 10, true);
+    let p = dv.getUint32(eocd + 16, true);
+    const out = {};
+    const dec = new TextDecoder();
+    for (let i = 0; i < count; i++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('Corrupt ZIP central directory');
+      const method = dv.getUint16(p + 10, true);
+      const csize = dv.getUint32(p + 20, true);
+      const nameLen = dv.getUint16(p + 28, true);
+      const extraLen = dv.getUint16(p + 30, true);
+      const commentLen = dv.getUint16(p + 32, true);
+      const lho = dv.getUint32(p + 42, true);
+      const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+      // Local header: skip its own variable-length name + extra fields.
+      const lNameLen = dv.getUint16(lho + 26, true);
+      const lExtraLen = dv.getUint16(lho + 28, true);
+      const start = lho + 30 + lNameLen + lExtraLen;
+      const raw = bytes.subarray(start, start + csize);
+      let body;
+      if (method === 0) {
+        body = raw;
+      } else if (method === 8) {
+        if (typeof DecompressionStream !== 'function') {
+          throw new Error('This browser cannot decompress ZIP archives');
+        }
+        const ds = new DecompressionStream('deflate-raw');
+        const stream = new Blob([raw]).stream().pipeThrough(ds);
+        body = new Uint8Array(await new Response(stream).arrayBuffer());
+      } else {
+        throw new Error('Unsupported ZIP compression method ' + method + ' for ' + name);
+      }
+      out[name.replace(/^.*[\\/]/, '')] = dec.decode(body);
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    return out;
+  }
+
+  /* ---- wiring ----------------------------------------------------------- */
+  const drop = $('drop');
+  const input = $('file');
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => handleFiles([...input.files]));
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); drop.classList.add('over');
+  }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    handleFiles([...e.dataTransfer.files]);
+  });
+  // Re-pinning must not require re-dropping the file.
+  $('anchor').addEventListener('input', () => {
+    if (!current) return;
+    const anchor = $('anchor').value.trim() || null;
+    let r;
+    try {
+      r = C.verifyJson(current.obj, anchor, current.extras);
+    } catch (e) {
+      return fail(e.message);
+    }
+    if (current.members) applyManifest(r, current.members);
+    show(current.obj, r, current.extras, current.members);
+  });
+
+  // The hosted copy is a convenience, not the trust root. Showing this page's
+  // own hash lets an auditor confirm it is the file published in the repo.
+  $('selfhash').textContent =
+    'This page needs no network and no installation. To confirm you are running ' +
+    'the published verifier and not an altered copy, compare this file’s ' +
+    'SHA-256 against verify.html.sha256 in the repository — on macOS or Linux, ' +
+    'run: shasum -a 256 verify.html';
+})();
 </script>
 </body>
 </html>
