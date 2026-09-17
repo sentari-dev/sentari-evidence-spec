@@ -225,10 +225,13 @@ details.sec-d > .body { padding: 16px 0 24px; }
    which is the entire point of a dense row. Grid above the fold width, flex
    as the narrow fallback; the full title is in the expanded body and in print. */
 @media (min-width: 760px) {
-  .ctrl > summary { display: grid; align-items: center;
-    grid-template-columns: max-content max-content max-content 1fr max-content max-content; }
+  .ctrl > summary { display: grid; align-items: center; gap: 12px;
+    grid-template-columns: 132px 96px 78px minmax(0, 1fr) max-content 12px; }
   .ctrl-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ctrl-act { justify-self: end; }
+  .ctrl > summary::after { margin-left: 0; }
 }
+.prio.empty { border: 0; padding: 0; }
 .filterstate { font-size: 14px; background: var(--field); border: 1px solid var(--rule);
   border-radius: 8px; padding: 10px 14px; margin: 0 0 16px;
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -1701,7 +1704,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       esc(pick(STATUS_GLYPH, st, '?')) + ' ' +
       esc(pick(STATUS_LABELS, st, 'Unrecognised status')) + '</span>' +
       '<span class="ctrl-ref">' + esc(ref) + '</span>' +
-      (prio ? '<span class="prio">' + esc(prio) + '</span>' : '') +
+      '<span class="prio' + (prio ? '' : ' empty') + '">' + esc(prio) + '</span>' +
       '<span class="ctrl-title">' + esc(c.title) + '</span>' +
       '<span class="ctrl-act a-' + esc(st) + '">' + esc(pick(STATUS_ACTION, st, '')) +
       '</span></summary><div class="body">';
@@ -2161,7 +2164,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         wireRowFilters();
       });
     });
-    document.querySelectorAll('.filters button').forEach((btn) => {
+    document.querySelectorAll('.filters button[data-filter]').forEach((btn) => {
       btn.addEventListener('click', () => setFilter(btn.getAttribute('data-filter')));
     });
     const ex = $('expandall');
@@ -2241,7 +2244,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
   function setFilter(next) {
     statusFilter = next;
-    document.querySelectorAll('.filters button').forEach((b) =>
+    document.querySelectorAll('.filters button[data-filter]').forEach((b) =>
       b.setAttribute('aria-pressed', String(b.getAttribute('data-filter') === next)));
     applyFilter();
   }
