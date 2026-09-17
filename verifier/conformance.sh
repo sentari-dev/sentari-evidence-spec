@@ -1,13 +1,16 @@
 #!/bin/sh
-# Conformance runner — proves BOTH reference verifiers (Python + Go) agree with
-# the documented verdict for every committed vector, with no Sentari deployment
-# and no network. An auditor/CAB runs this to convince themselves the format is
-# genuinely open and offline-verifiable; a reimplementer runs it to self-check.
+# Conformance runner — proves ALL THREE reference verifiers (Python + Go + the
+# browser verifier in verify.html) agree with the documented verdict for every
+# committed vector, with no Sentari deployment and no network. An auditor/CAB
+# runs this to convince themselves the format is genuinely open and
+# offline-verifiable; a reimplementer runs it to self-check.
 #
 # Exit 0 iff every vector produces its documented verdict in BOTH languages.
 # See CONFORMANCE.md for the expected-verdict table this script enforces.
 #
-# Requirements: python3 + `pip install cryptography`; go (to build the Go verifier).
+# Requirements: python3 + `pip install cryptography`; go (to build the Go
+# verifier); node (to drive the browser verifier's core headlessly).
+# Missing node is reported, never silently skipped.
 set -eu
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -71,9 +74,26 @@ PYEOF
 check "python  tampered document   -> tampered"    2 "$PY" "$PYV" "$TAMPER"
 check "go      tampered document   -> tampered"    2 "$GOBIN" "$TAMPER"
 
+# The browser verifier (verify.html). Its harness extracts the core block out of
+# the shipped HTML — the exact bytes an auditor runs — and drives the same vector
+# and mutation table in node. Counted as ONE check here because the harness
+# prints and tallies its own; a non-zero exit means at least one disagreed.
+echo "# browser verifier (verify.html, via node)"
+if command -v node >/dev/null 2>&1; then
+  if node "$REPO/verifier-web/conformance.mjs" >/dev/null 2>&1; then
+    pass=$((pass + 1)); printf '  PASS  browser  full vector + mutation table\n'
+  else
+    fail=$((fail + 1)); printf '  FAIL  browser  full vector + mutation table\n'
+    printf '        re-run for detail: node verifier-web/conformance.mjs\n'
+  fi
+else
+  fail=$((fail + 1))
+  printf '  FAIL  browser  node not found - cannot verify verify.html\n'
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
-  printf 'CONFORMANCE PASS — %s checks, both verifiers agree.\n' "$pass"
+  printf 'CONFORMANCE PASS — %s checks, all three verifiers agree.\n' "$pass"
   exit 0
 fi
 printf 'CONFORMANCE FAIL — %s failed / %s passed.\n' "$fail" "$pass"

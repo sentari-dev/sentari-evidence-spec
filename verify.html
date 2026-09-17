@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify Sentari Evidence</title>
+<!--
+  Sentari evidence verifier — offline, single file, no dependencies.
+
+  This page verifies a Sentari evidence pack (or a signed SBOM / VEX export)
+  entirely on your own machine. It makes NO network requests of any kind.
+  Save it, disconnect, and it still works: open it from a USB stick with
+  file:// and nothing about the verification changes.
+
+  It is a third independent implementation of the open specification in this
+  repository (spec/spec-v0.1.md), alongside the Python and Go reference
+  verifiers, and it is held to the same published verdict table
+  (CONFORMANCE.md) by verifier-web/conformance.mjs, which extracts the core
+  block below out of THIS file and runs the committed conformance vectors
+  through it in Node.
+
+  Apache-2.0. Read it, check it, reimplement it.
+-->
+</head>
+<body>
+<script id="evidence-core">
+/* CORE-BEGIN — extracted verbatim by verifier-web/conformance.mjs. Do not
+   move or rename these markers. */
+/* ===========================================================================
+ * Sentari evidence verifier — CORE
+ * ---------------------------------------------------------------------------
+ * A third independent implementation of the open evidence-pack specification
+ * (spec/spec-v0.1.md), alongside the Python and Go reference verifiers. It is
+ * conformance-tested against the SAME committed vectors and the SAME published
+ * verdict table (CONFORMANCE.md) by verifier-web/conformance.mjs, which
+ * extracts THIS block from the shipped HTML and runs it in Node.
+ *
+ * Everything is implemented from scratch, in this file, on purpose:
+ *
+ *  - No network. Ever. Not for fonts, not for a CDN, not for anything.
+ *  - No `crypto.subtle`. It is gated on a "secure context", and an auditor who
+ *    double-clicks this file from a USB stick is on file:// — we will not have
+ *    the verification fail on a browser feature gate we cannot see. Embedding
+ *    the primitives also keeps the verdict path synchronous and readable.
+ *  - No minification, no bundler, no dependencies, so the whole thing can be
+ *    audited by View Source. That is the point of it.
+ *
+ * Requires only BigInt (every browser since 2020).
+ * =========================================================================== */
+'use strict';
+
+const EvidenceCore = (() => {
+
+  /* ---------------------------------------------------------------------- *
+   * SHA-256 (FIPS 180-4)
+   * ---------------------------------------------------------------------- */
+  const K256 = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ]);
+
+  function sha256(bytes) {
+    const h = new Uint32Array([
+      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+    ]);
+    // Padding: 0x80, zeros, then the 64-bit big-endian bit length.
+    const bitLen = bytes.length * 8;
+    const withPad = new Uint8Array((((bytes.length + 9) >> 6) + 1) << 6);
+    withPad.set(bytes);
+    withPad[bytes.length] = 0x80;
+    // bitLen is < 2^53 so the high dword is derived by division, not shifting.
+    const dv = new DataView(withPad.buffer);
+    dv.setUint32(withPad.length - 8, Math.floor(bitLen / 0x100000000));
+    dv.setUint32(withPad.length - 4, bitLen >>> 0);
+
+    const w = new Uint32Array(64);
+    const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+    for (let off = 0; off < withPad.length; off += 64) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      let [a, b, c, d, e, f, g, hh] = h;
+      for (let i = 0; i < 64; i++) {
+        const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        const ch = (e & f) ^ (~e & g);
+        const t1 = (hh + S1 + ch + K256[i] + w[i]) >>> 0;
+        const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        const mj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (S0 + mj) >>> 0;
+        hh = g; g = f; f = e; e = (d + t1) >>> 0;
+        d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      h[0] = (h[0] + a) >>> 0; h[1] = (h[1] + b) >>> 0;
+      h[2] = (h[2] + c) >>> 0; h[3] = (h[3] + d) >>> 0;
+      h[4] = (h[4] + e) >>> 0; h[5] = (h[5] + f) >>> 0;
+      h[6] = (h[6] + g) >>> 0; h[7] = (h[7] + hh) >>> 0;
+    }
+    const out = new Uint8Array(32);
+    new DataView(out.buffer);
+    for (let i = 0; i < 8; i++) {
+      out[i * 4] = h[i] >>> 24; out[i * 4 + 1] = (h[i] >>> 16) & 0xff;
+      out[i * 4 + 2] = (h[i] >>> 8) & 0xff; out[i * 4 + 3] = h[i] & 0xff;
+    }
+    return out;
+  }
+
+  const HEX = '0123456789abcdef';
+  function toHex(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) {
+      s += HEX[bytes[i] >> 4] + HEX[bytes[i] & 15];
+    }
+    return s;
+  }
+  const sha256Hex = (bytes) => toHex(sha256(bytes));
+
+  /* ---------------------------------------------------------------------- *
+   * SHA-512 (FIPS 180-4) — required INSIDE Ed25519 verification.
+   * 64-bit words via BigInt: the messages here are ~100 bytes, so clarity
+   * beats the speed of a hand-split 32-bit implementation.
+   * ---------------------------------------------------------------------- */
+  const K512 = [
+    '428a2f98d728ae22','7137449123ef65cd','b5c0fbcfec4d3b2f','e9b5dba58189dbbc',
+    '3956c25bf348b538','59f111f1b605d019','923f82a4af194f9b','ab1c5ed5da6d8118',
+    'd807aa98a3030242','12835b0145706fbe','243185be4ee4b28c','550c7dc3d5ffb4e2',
+    '72be5d74f27b896f','80deb1fe3b1696b1','9bdc06a725c71235','c19bf174cf692694',
+    'e49b69c19ef14ad2','efbe4786384f25e3','0fc19dc68b8cd5b5','240ca1cc77ac9c65',
+    '2de92c6f592b0275','4a7484aa6ea6e483','5cb0a9dcbd41fbd4','76f988da831153b5',
+    '983e5152ee66dfab','a831c66d2db43210','b00327c898fb213f','bf597fc7beef0ee4',
+    'c6e00bf33da88fc2','d5a79147930aa725','06ca6351e003826f','142929670a0e6e70',
+    '27b70a8546d22ffc','2e1b21385c26c926','4d2c6dfc5ac42aed','53380d139d95b3df',
+    '650a73548baf63de','766a0abb3c77b2a8','81c2c92e47edaee6','92722c851482353b',
+    'a2bfe8a14cf10364','a81a664bbc423001','c24b8b70d0f89791','c76c51a30654be30',
+    'd192e819d6ef5218','d69906245565a910','f40e35855771202a','106aa07032bbd1b8',
+    '19a4c116b8d2d0c8','1e376c085141ab53','2748774cdf8eeb99','34b0bcb5e19b48a8',
+    '391c0cb3c5c95a63','4ed8aa4ae3418acb','5b9cca4f7763e373','682e6ff3d6b2b8a3',
+    '748f82ee5defb2fc','78a5636f43172f60','84c87814a1f0ab72','8cc702081a6439ec',
+    '90befffa23631e28','a4506cebde82bde9','bef9a3f7b2c67915','c67178f2e372532b',
+    'ca273eceea26619c','d186b8c721c0c207','eada7dd6cde0eb1e','f57d4f7fee6ed178',
+    '06f067aa72176fba','0a637dc5a2c898a6','113f9804bef90dae','1b710b35131c471b',
+    '28db77f523047d84','32caab7b40c72493','3c9ebe0a15c9bebc','431d67c49c100d4c',
+    '4cc5d4becb3e42b6','597f299cfc657e2a','5fcb6fab3ad6faec','6c44198c4a475817',
+  ].map((s) => BigInt('0x' + s));
+
+  const M64 = (1n << 64n) - 1n;
+  const rotr64 = (x, n) => ((x >> n) | (x << (64n - n))) & M64;
+
+  function sha512(bytes) {
+    let h = [
+      '6a09e667f3bcc908','bb67ae8584caa73b','3c6ef372fe94f82b','a54ff53a5f1d36f1',
+      '510e527fade682d1','9b05688c2b3e6c1f','1f83d9abfb41bd6b','5be0cd19137e2179',
+    ].map((s) => BigInt('0x' + s));
+
+    const bitLen = BigInt(bytes.length) * 8n;
+    const withPad = new Uint8Array((((bytes.length + 17) >> 7) + 1) << 7);
+    withPad.set(bytes);
+    withPad[bytes.length] = 0x80;
+    for (let i = 0; i < 16; i++) {
+      withPad[withPad.length - 1 - i] = Number((bitLen >> BigInt(8 * i)) & 0xffn);
+    }
+
+    const w = new Array(80);
+    for (let off = 0; off < withPad.length; off += 128) {
+      for (let i = 0; i < 16; i++) {
+        let v = 0n;
+        for (let j = 0; j < 8; j++) v = (v << 8n) | BigInt(withPad[off + i * 8 + j]);
+        w[i] = v;
+      }
+      for (let i = 16; i < 80; i++) {
+        const s0 = rotr64(w[i - 15], 1n) ^ rotr64(w[i - 15], 8n) ^ (w[i - 15] >> 7n);
+        const s1 = rotr64(w[i - 2], 19n) ^ rotr64(w[i - 2], 61n) ^ (w[i - 2] >> 6n);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & M64;
+      }
+      let [a, b, c, d, e, f, g, hh] = h;
+      for (let i = 0; i < 80; i++) {
+        const S1 = rotr64(e, 14n) ^ rotr64(e, 18n) ^ rotr64(e, 41n);
+        const ch = (e & f) ^ (~e & M64 & g);
+        const t1 = (hh + S1 + ch + K512[i] + w[i]) & M64;
+        const S0 = rotr64(a, 28n) ^ rotr64(a, 34n) ^ rotr64(a, 39n);
+        const mj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (S0 + mj) & M64;
+        hh = g; g = f; f = e; e = (d + t1) & M64;
+        d = c; c = b; b = a; a = (t1 + t2) & M64;
+      }
+      const nx = [a, b, c, d, e, f, g, hh];
+      h = h.map((v, i) => (v + nx[i]) & M64);
+    }
+    const out = new Uint8Array(64);
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        out[i * 8 + j] = Number((h[i] >> BigInt(56 - 8 * j)) & 0xffn);
+      }
+    }
+    return out;
+  }
+
+  /* ---------------------------------------------------------------------- *
+   * Ed25519 — VERIFY ONLY (RFC 8032, §5.1.7)
+   * Verification alone is a fraction of the code signing needs, and this tool
+   * must never sign anything. Extended twisted-Edwards coordinates keep the
+   * scalar multiplication inversion-free (one inversion at the end), which is
+   * what makes this fast enough to feel instant in a browser.
+   * ---------------------------------------------------------------------- */
+  const P = (1n << 255n) - 19n;                 // field prime
+  const L = (1n << 252n) + 27742317777372353535851937790883648493n;  // group order
+  const D = 37095705934669439343138083508754565189542113879843219016388785533085940283555n;
+  const SQRT_M1 = 19681161376707505956807079304988542015446066515923890162744021073123829784752n;
+
+  const mod = (a, m = P) => ((a % m) + m) % m;
+
+  function powMod(b, e, m = P) {
+    let r = 1n;
+    b = mod(b, m);
+    while (e > 0n) {
+      if (e & 1n) r = (r * b) % m;
+      b = (b * b) % m;
+      e >>= 1n;
+    }
+    return r;
+  }
+  const inv = (a) => powMod(a, P - 2n);        // Fermat; P is prime
+
+  // Extended coordinates (X, Y, Z, T) with x = X/Z, y = Y/Z, T = XY/Z.
+  const ZERO = [0n, 1n, 1n, 0n];
+
+  function pointAdd(p1, p2) {
+    const [X1, Y1, Z1, T1] = p1;
+    const [X2, Y2, Z2, T2] = p2;
+    const A = mod((Y1 - X1) * (Y2 - X2));
+    const B = mod((Y1 + X1) * (Y2 + X2));
+    const C = mod(T1 * 2n * D * T2);
+    const Dd = mod(Z1 * 2n * Z2);
+    const E = B - A, F = Dd - C, G = Dd + C, H = B + A;
+    return [mod(E * F), mod(G * H), mod(F * G), mod(E * H)];
+  }
+
+  function pointDouble(p) { return pointAdd(p, p); }
+
+  function scalarMul(p, k) {
+    let q = ZERO;
+    while (k > 0n) {
+      if (k & 1n) q = pointAdd(q, p);
+      p = pointDouble(p);
+      k >>= 1n;
+    }
+    return q;
+  }
+
+  const BASE_Y = 46316835694926478169428394003475163141307993866256225615783033603165251855960n;
+  const BASE_X = 15112221349535400772501151409588531511454012693041857206046113283949847762202n;
+  const BASE = [BASE_X, BASE_Y, 1n, mod(BASE_X * BASE_Y)];
+
+  function bytesToLE(bytes) {
+    let n = 0n;
+    for (let i = bytes.length - 1; i >= 0; i--) n = (n << 8n) | BigInt(bytes[i]);
+    return n;
+  }
+
+  /** Decompress a 32-byte little-endian compressed point. null if off-curve. */
+  function pointDecompress(bytes) {
+    const yRaw = bytesToLE(bytes);
+    const sign = (yRaw >> 255n) & 1n;
+    const y = yRaw & ((1n << 255n) - 1n);
+    if (y >= P) return null;                     // non-canonical y encoding
+    // x^2 = (y^2 - 1) / (d*y^2 + 1)
+    const y2 = mod(y * y);
+    const u = mod(y2 - 1n);
+    const v = mod(D * y2 + 1n);
+    let x = mod(u * inv(v));
+    x = powMod(x, (P + 3n) / 8n);
+    if (mod(x * x) !== mod(u * inv(v))) x = mod(x * SQRT_M1);
+    if (mod(x * x) !== mod(u * inv(v))) return null;   // not a square: off-curve
+    if ((x & 1n) !== sign) x = mod(-x);
+    return [x, y, 1n, mod(x * y)];
+  }
+
+  function pointEquals(p1, p2) {
+    // Compare in projective form: X1*Z2 == X2*Z1 and Y1*Z2 == Y2*Z1.
+    const [X1, Y1, Z1] = p1;
+    const [X2, Y2, Z2] = p2;
+    return mod(X1 * Z2) === mod(X2 * Z1) && mod(Y1 * Z2) === mod(Y2 * Z1);
+  }
+
+  /**
+   * RFC 8032 Ed25519 verification of `sig` (64 bytes) over `msg` with the
+   * raw 32-byte `pub`. Returns a strict boolean; any malformed input is false,
+   * never an exception — a corrupt artifact is a verdict, not a crash.
+   */
+  function ed25519Verify(sig, msg, pub) {
+    try {
+      if (!(sig instanceof Uint8Array) || sig.length !== 64) return false;
+      if (!(pub instanceof Uint8Array) || pub.length !== 32) return false;
+      const A = pointDecompress(pub);
+      if (A === null) return false;
+      const Rbytes = sig.subarray(0, 32);
+      const S = bytesToLE(sig.subarray(32, 64));
+      if (S >= L) return false;                  // non-canonical / malleable S
+      const R = pointDecompress(Rbytes);
+      if (R === null) return false;
+
+      const msgBytes = new Uint8Array(64 + msg.length);
+      msgBytes.set(Rbytes, 0);
+      msgBytes.set(pub, 32);
+      msgBytes.set(msg, 64);
+      const k = mod(bytesToLE(sha512(msgBytes)), L);
+
+      // Check [S]B == R + [k]A
+      const lhs = scalarMul(BASE, S);
+      const rhs = pointAdd(R, scalarMul(A, k));
+      return pointEquals(lhs, rhs);
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  /* ---------------------------------------------------------------------- *
+   * Canonical JSON — spec §4
+   * ---------------------------------------------------------------------- *
+   * Normative definition:
+   *   json.dumps(x, sort_keys=True, separators=(",",":"), ensure_ascii=False)
+   *
+   * Built explicitly rather than via JSON.stringify(x, replacer) because two
+   * things must NOT be left to the JS defaults:
+   *
+   *  1. KEY ORDER. Python sorts by Unicode CODE POINT; JS's default string
+   *     sort compares UTF-16 CODE UNITS. Those disagree for astral-plane keys
+   *     (a surrogate pair sorts below U+E000..U+FFFF in UTF-16 order but above
+   *     it by code point). We sort by code point.
+   *  2. NUMBERS. JSON.parse yields doubles, and this spec deliberately does
+   *     NOT canonicalise numbers, so the signed content must be integral and
+   *     within the safe range or the bytes are not reproducible across
+   *     languages. Spec §12.2 requires a conformant PRODUCER's signer to
+   *     reject such values; we mirror it on the verifier side and refuse to
+   *     hash them at all (see assertHashable).
+   *
+   * String escaping is delegated to JSON.stringify, which matches Python's
+   * ensure_ascii=False output for well-formed strings: short escapes for
+   * \b \t \n \f \r, \uXXXX for other C0 controls, and raw UTF-8 otherwise.
+   */
+  function codePointCompare(a, b) {
+    // Array.from splits on code points, not UTF-16 units.
+    const ca = Array.from(a), cb = Array.from(b);
+    const n = Math.min(ca.length, cb.length);
+    for (let i = 0; i < n; i++) {
+      const d = ca[i].codePointAt(0) - cb[i].codePointAt(0);
+      if (d !== 0) return d < 0 ? -1 : 1;
+    }
+    return ca.length === cb.length ? 0 : (ca.length < cb.length ? -1 : 1);
+  }
+
+  /** Thrown for content that cannot be canonicalised reproducibly. */
+  class NotHashable extends Error {}
+
+  function canonicalString(value) {
+    if (value === null) return 'null';
+    const t = typeof value;
+    if (t === 'boolean') return value ? 'true' : 'false';
+    if (t === 'number') {
+      if (!Number.isFinite(value)) {
+        throw new NotHashable('non-finite number in hashed content');
+      }
+      if (!Number.isInteger(value)) {
+        // A float would split-brain the verifiers: Python renders 10.0 as
+        // "10.0", a Go float64 as "10". Spec §4/§12.2 forbid it outright.
+        throw new NotHashable('float in hashed content (spec §4: integers only)');
+      }
+      if (!Number.isSafeInteger(value)) {
+        throw new NotHashable('integer outside the safe range +/-2^53 (spec §12.2)');
+      }
+      return String(value);
+    }
+    if (t === 'string') return JSON.stringify(value);
+    if (Array.isArray(value)) {
+      return '[' + value.map(canonicalString).join(',') + ']';
+    }
+    if (t === 'object') {
+      const keys = Object.keys(value).sort(codePointCompare);
+      return '{' + keys.map(
+        (k) => JSON.stringify(k) + ':' + canonicalString(value[k])
+      ).join(',') + '}';
+    }
+    throw new NotHashable('unserialisable value of type ' + t);
+  }
+
+  const UTF8 = new TextEncoder();
+  const canonicalJson = (obj) => UTF8.encode(canonicalString(obj));
+  const canonicalSha256Hex = (obj) => sha256Hex(canonicalJson(obj));
+
+  /* ---------------------------------------------------------------------- *
+   * Verification layers & verdict — spec §5, §9, §12.6
+   * ---------------------------------------------------------------------- *
+   * The flags and the verdict PRECEDENCE mirror the Python reference
+   * verifier's Result dataclass exactly. Three implementations must not
+   * merely agree on the golden vectors; they must agree on WHY.
+   *
+   *   null  = not checked / not applicable to this artifact class
+   *   true  = checked and passed
+   *   false = checked and FAILED (hard integrity failure)
+   */
+  const PACK_CTX = 'sentari-evidence-pack/v1';
+  const ARTIFACT_CTX = {
+    'sentari-sbom/v1': 'SBOM',
+    'sentari-vex/v1': 'VEX',
+  };
+
+  function newResult() {
+    return {
+      payload_intact: null,
+      frozen_inputs_valid: null,
+      signature_valid: null,
+      sig_fields_consistent: null,
+      manifest_valid: null,
+      key_id_matches_material: null,
+      key_id_matches_anchor: null,
+      per_source: {},
+      notes: [],
+      kind: null,          // 'pack' | 'SBOM' | 'VEX'
+      layer2_na: false,    // §12.6.5: "N/A for this class", never "skipped"
+    };
+  }
+
+  /** Verdict precedence — must match the Python reference verifier. */
+  function verdictOf(r) {
+    if (r.payload_intact === false) return 'tampered';
+    if (r.sig_fields_consistent === false) return 'tampered';
+    if (r.frozen_inputs_valid === false) return 'tampered';
+    if (r.manifest_valid === false) return 'tampered';
+    if (r.signature_valid === false) return 'tampered';
+    // key_id != fingerprint(embedded public key): the key MATERIAL was
+    // rewritten. That is tampering, not a merely unrecognised signer.
+    if (r.key_id_matches_material === false) return 'tampered';
+    if (r.signature_valid === null) return 'key_unknown';
+    if (r.key_id_matches_anchor === false) return 'key_unknown';
+    if (r.payload_intact && r.signature_valid) return 'verified';
+    return 'key_unknown';
+  }
+
+  const EXIT_CODES = { verified: 0, tampered: 2, key_unknown: 3, error: 4 };
+
+  function b64ToBytes(s) {
+    if (typeof s !== 'string') return null;
+    // Strict: reject anything outside the base64 alphabet, so a corrupt field
+    // becomes a deterministic verdict rather than silently-truncated bytes.
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s) || s.length % 4 !== 0) return null;
+    try {
+      const bin = typeof atob === 'function'
+        ? atob(s)
+        : Buffer.from(s, 'base64').toString('binary');
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  /**
+   * Verify the detached signature block against a known content hash.
+   * Sets signature_valid / key_id_matches_material / key_id_matches_anchor.
+   */
+  function checkSignature(r, sigBlock, contentHash, ctx, frozenHash, anchor) {
+    const pub = b64ToBytes(sigBlock.public_key);
+    const sigBytes = b64ToBytes(sigBlock.value);
+
+    if (pub === null || pub.length !== 32) {
+      // No usable key material: the maths cannot be evaluated at all. Not
+      // tampering — "unknown signer" (spec §5.5).
+      r.signature_valid = null;
+      r.notes.push('no usable public key in the signature block');
+    } else {
+      const kid = 'ed25519:' + sha256Hex(pub).slice(0, 32);
+      r.key_id_matches_material = kid === sigBlock.key_id;
+      if (!r.key_id_matches_material) {
+        r.notes.push(
+          `key_id != fingerprint(public_key): ${sigBlock.key_id} vs ${kid}`
+        );
+      }
+      if (sigBytes === null) {
+        r.signature_valid = false;
+        r.notes.push('signature value is not valid base64');
+      } else {
+        // The domain-separated envelope. A pack binds BOTH hashes (§6.1); an
+        // SBOM/VEX binds only the document hash (§12.3) — so a signature can
+        // never cross-verify as a different artifact class.
+        const inner = frozenHash === null
+          ? { content_sha256: contentHash, ctx: ctx }
+          : { content_sha256: contentHash, ctx: ctx, frozen_inputs_sha256: frozenHash };
+        r.signature_valid = ed25519Verify(sigBytes, canonicalJson(inner), pub);
+        if (!r.signature_valid) r.notes.push('Ed25519 signature did not verify');
+      }
+    }
+
+    if (anchor) {
+      r.key_id_matches_anchor = sigBlock.key_id === anchor;
+      if (!r.key_id_matches_anchor) {
+        r.notes.push(
+          `signing key is not the one you pinned: ${sigBlock.key_id} != ${anchor}`
+        );
+      }
+    }
+  }
+
+  /** Layer 2 (spec §5.3): whole-blob hash + EVERY per-source inner hash. */
+  function checkFrozenInputs(r, frozen, expectedHash) {
+    const whole = canonicalSha256Hex(frozen);
+    let ok = whole === expectedHash;
+    if (!ok) r.notes.push('frozen_inputs blob hash does not match the signed value');
+
+    const sources = frozen && frozen.sources;
+    if (sources === null || typeof sources !== 'object' || Array.isArray(sources)) {
+      r.notes.push('frozen_inputs.sources is missing or not an object');
+      r.frozen_inputs_valid = false;
+      return;
+    }
+    // Every source is re-derived, including ones the collector no longer
+    // reads (spec §5.3) — a stale source is still signed evidence.
+    for (const name of Object.keys(sources).sort(codePointCompare)) {
+      const src = sources[name];
+      if (src === null || typeof src !== 'object' || typeof src.sha256 !== 'string') {
+        r.per_source[name] = false;
+        ok = false;
+        r.notes.push(`frozen source "${name}" is malformed`);
+        continue;
+      }
+      // Row-list source hashes its rows; an aggregate source hashes the whole
+      // inner object minus its own "sha256" field (spec §3.3).
+      const keys = Object.keys(src);
+      const isRowList = keys.length === 2 && keys.includes('rows') && keys.includes('sha256');
+      let subject;
+      if (isRowList) {
+        subject = src.rows;
+      } else {
+        subject = {};
+        for (const k of keys) if (k !== 'sha256') subject[k] = src[k];
+      }
+      let got;
+      try {
+        got = canonicalSha256Hex(subject);
+      } catch (_e) {
+        got = null;
+      }
+      const good = got === src.sha256;
+      r.per_source[name] = good;
+      if (!good) {
+        ok = false;
+        r.notes.push(`frozen source "${name}" hash does not match`);
+      }
+    }
+    r.frozen_inputs_valid = ok;
+  }
+
+  /* ---------------------------------------------------------------------- *
+   * Artifact dispatch — spec §9 step 1, §12.6 step 4
+   * ---------------------------------------------------------------------- */
+
+  /** Signed SBOM / VEX wrapper: {document, signature} — spec §12. */
+  function verifyDocument(wrapper, anchor) {
+    const r = newResult();
+    const sig = wrapper.signature;
+    const ctx = sig.context;
+    r.kind = ARTIFACT_CTX[ctx];
+    // Layer 2 and Layer 3 do not EXIST for this class. The spec is emphatic
+    // that this must not read as "could have checked, didn't" (§12.6.5).
+    r.layer2_na = true;
+
+    // Hashed AS-IS: no blank-and-rehash, no field injection. Injecting a
+    // content_sha256 would hash bytes that were never signed (§12.2).
+    let recomputed;
+    try {
+      recomputed = canonicalSha256Hex(wrapper.document);
+    } catch (e) {
+      r.payload_intact = false;
+      r.notes.push('document cannot be canonicalised: ' + e.message);
+      return r;
+    }
+    r.payload_intact = recomputed === sig.content_sha256;
+    if (!r.payload_intact) {
+      r.notes.push('document hash does not match the signature block');
+    }
+    checkSignature(r, sig, sig.content_sha256, ctx, null, anchor);
+    return r;
+  }
+
+  /** Evidence pack: the {payload,signature,frozen_inputs} or flat form. */
+  function verifyPack(obj, anchor, opts) {
+    opts = opts || {};
+    const r = newResult();
+    r.kind = 'pack';
+
+    // Both shapes are accepted: the nested form and the flat server-download
+    // form (payload fields at the top level, signature/frozen_inputs as
+    // siblings). The signature is always OUTSIDE the hashed payload.
+    let payload, sig, frozen;
+    if (obj.payload && typeof obj.payload === 'object') {
+      payload = obj.payload;
+      sig = obj.signature;
+      frozen = obj.frozen_inputs;
+    } else {
+      payload = {};
+      for (const k of Object.keys(obj)) {
+        if (k !== 'signature' && k !== 'frozen_inputs') payload[k] = obj[k];
+      }
+      sig = obj.signature;
+      frozen = obj.frozen_inputs;
+    }
+    // A zip/dir pack supplies frozen_inputs as its own member.
+    if (frozen === undefined && opts.frozenInputs !== undefined) {
+      frozen = opts.frozenInputs;
+    }
+
+    // --- Layer 1: blank content_sha256, canonicalise, sha256 (§5.1/§5.2) ---
+    const core = {};
+    for (const k of Object.keys(payload)) core[k] = payload[k];
+    const stored = core.content_sha256;
+    core.content_sha256 = '';
+    let recomputed;
+    try {
+      recomputed = canonicalSha256Hex(core);
+    } catch (e) {
+      r.payload_intact = false;
+      r.notes.push('payload cannot be canonicalised: ' + e.message);
+      return r;
+    }
+    r.payload_intact = recomputed === stored;
+    if (!r.payload_intact) r.notes.push('payload content_sha256 does not recompute');
+
+    if (!sig || typeof sig !== 'object') {
+      r.notes.push('no detached signature block');
+      return r;
+    }
+
+    // --- Detached-block metadata must agree with the hash-verified payload ---
+    // A block that disagrees is tampering: it is how a rewritten DB column
+    // would present itself (spec §5.5).
+    r.sig_fields_consistent = sig.content_sha256 === stored;
+    if (!r.sig_fields_consistent) {
+      r.notes.push('signature block content_sha256 disagrees with the payload');
+    }
+
+    // --- Layer 2: frozen inputs (§5.3) ---
+    if (frozen !== undefined && frozen !== null) {
+      checkFrozenInputs(r, frozen, sig.frozen_inputs_sha256);
+    } else {
+      // Left null, and the UI says so: not embedded, therefore not checkable
+      // offline. Distinct from the SBOM/VEX "this class has none" case.
+      r.notes.push('frozen_inputs not embedded in this artifact — Layer 2 not checkable offline');
+    }
+
+    checkSignature(
+      r, sig, sig.content_sha256, sig.context || PACK_CTX,
+      sig.frozen_inputs_sha256 === undefined ? null : sig.frozen_inputs_sha256,
+      anchor
+    );
+    return r;
+  }
+
+  /**
+   * Verify a parsed JSON artifact. `anchor` is the out-of-band-published
+   * key_id the auditor pinned (null = none supplied: the maths is checked but
+   * authenticity is NOT established).
+   */
+  function verifyJson(obj, anchor, opts) {
+    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+      throw new Error('not a JSON object');
+    }
+    // The {document,signature} wrapper is recognised BEFORE any flat-pack
+    // fallback, and an unknown ctx is rejected outright rather than silently
+    // accepted (spec §12.6 step 4).
+    if (obj.document !== undefined && obj.signature && typeof obj.signature === 'object') {
+      const ctx = obj.signature.context;
+      if (ARTIFACT_CTX[ctx]) return verifyDocument(obj, anchor);
+      const r = newResult();
+      r.kind = 'unknown';
+      r.payload_intact = false;
+      r.notes.push(`unknown signature context "${ctx}" — refusing to accept an unrecognised format`);
+      return r;
+    }
+    // A pack relabelled with an artifact ctx (or vice-versa) must fail: the
+    // ctx is inside the signed envelope, so a cross-context replay breaks the
+    // signature outright. We reach that through the normal pack path.
+    return verifyPack(obj, anchor, opts);
+  }
+
+  return {
+    // primitives (exported for the conformance harness and for review)
+    sha256, sha256Hex, sha512, toHex, ed25519Verify,
+    canonicalJson, canonicalString, canonicalSha256Hex, codePointCompare,
+    NotHashable, b64ToBytes,
+    // verification
+    newResult, verdictOf, verifyJson, verifyPack, verifyDocument,
+    checkFrozenInputs, checkSignature,
+    PACK_CTX, ARTIFACT_CTX, EXIT_CODES,
+  };
+})();
+
+// Node (the conformance harness) vs browser.
+if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCore;
+/* CORE-END */
+</script>
+</body>
+</html>
