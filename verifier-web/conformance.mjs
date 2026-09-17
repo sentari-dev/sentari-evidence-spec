@@ -226,6 +226,37 @@ for (const bad of ['{', '{"a":}', '[1,]', '{"a":01}', 'nul', '{"a":1}x', '"\\ud8
 console.log('  PASS  malformed JSON is rejected, not crashed on');
 pass++;
 
+/* --- prototype-key smuggling ------------------------------------------- *
+ * This is here because the bug came back. "__proto__" was fixed in the
+ * parser, and three lines later the copy loops in verifyPack re-created it
+ * exactly: assigning the key onto a plain {} sets the prototype, the key
+ * disappears from Object.keys, and the hash is computed over bytes that are
+ * NOT the file's. Python and Go both treat it as ordinary data, so the result
+ * was a false "verified" here against "tampered" there -- a three-way split
+ * on the one axis that matters. Vectors, not vigilance. */
+console.log('# prototype-key smuggling');
+const protoPack = EvidenceCore.parseJson(
+  readFileSync(join(FIXTURES, 'pack-with-frozen-inputs.fixture.json'), 'utf8')
+    .replace('{\n  "catalog_version"',
+             '{\n  "__proto__": {"x": "never signed"},\n  "catalog_version"'));
+check('__proto__ smuggled into a signed payload', 'tampered', verdict(protoPack, null));
+
+const protoFrozen = loadFixture('pack-with-frozen-inputs.fixture.json');
+protoFrozen.frozen_inputs.sources.attestations['__proto__'] = { x: 1 };
+check('__proto__ smuggled into a frozen source', 'tampered', verdict(protoFrozen, null));
+
+// An inherited property name must not satisfy the artifact-context lookup and
+// slip past "refuse an unrecognised format".
+const ctorCtx = load('sbom-cyclonedx.signed.golden.json');
+ctorCtx.signature.context = 'constructor';
+check('"constructor" as a signature context', 'tampered', verdict(ctorCtx, null));
+
+// Ed25519: x = 0 with the sign bit set is not a valid point encoding.
+const badPoint = new Uint8Array(32);
+badPoint[31] = 0x80;   // y = 0, sign bit set  ->  x = 0 encoded as negative
+check('non-canonical x=0 point encoding rejected', false,
+  EvidenceCore.ed25519Verify(new Uint8Array(64), new Uint8Array(0), badPoint));
+
 console.log('');
 if (fail === 0) {
   console.log(`CONFORMANCE PASS — ${pass} checks, browser verifier agrees with the published table.`);

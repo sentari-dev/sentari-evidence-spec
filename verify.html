@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The page claims to make no network requests. That is true by construction
+     -- there is no fetch, no XHR and no external src anywhere in the file --
+     but a claim you have to verify by reading is weaker than one the browser
+     enforces. This works at file:// too. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>Verify Sentari Evidence</title>
 <!-- Inlined so the browser never probes /favicon.ico: "this page makes no
      network requests" should be literally true, not nearly true. -->
@@ -211,7 +216,24 @@ details.sec-d > .body { padding: 16px 0 24px; }
 .ctrl[open] > summary::after { transform: rotate(90deg); }
 .ctrl-ref { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
   color: var(--ink-2); flex: 0 0 auto; min-width: 74px; }
+.prio { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-2); border: 1px solid var(--rule-2); border-radius: 4px;
+  padding: 1px 6px; flex: 0 0 auto; }
 .ctrl-title { font-weight: 600; font-size: 15px; flex: 1 1 240px; }
+/* Real control titles are long. With flex-wrap the action word drops onto a
+   second line on roughly a third of rows, and the columns stop lining up --
+   which is the entire point of a dense row. Grid above the fold width, flex
+   as the narrow fallback; the full title is in the expanded body and in print. */
+@media (min-width: 760px) {
+  .ctrl > summary { display: grid; align-items: center;
+    grid-template-columns: max-content max-content max-content 1fr max-content max-content; }
+  .ctrl-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.filterstate { font-size: 14px; background: var(--field); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 10px 14px; margin: 0 0 16px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.filterstate button { padding: 4px 12px; font-size: 13px; }
+#expandall { margin-left: auto; }
 .ctrl-act { font-size: 13px; font-weight: 600; }
 .a-non_compliant { color: var(--bad-fg); } .a-at_risk { color: var(--warn-fg); }
 .a-not_assessed { color: var(--na-fg); } .a-compliant { color: var(--ok-fg); }
@@ -298,14 +320,27 @@ table.rec th, table.rec td { white-space: nowrap; }
   .ctrl > summary::after, details.sec-d > summary::before { content: ""; }
   .scroll { overflow: visible !important; }
   table { font-size: 8pt; table-layout: fixed; }
+  /* table-layout:fixed does nothing while width is auto -- the table then
+     runs off the sheet edge, which looks exactly like clipping to the reader. */
+  table.rec { width: 100% !important; }
   table.rec, table.rec th, table.rec td { white-space: normal !important;
-    word-break: break-word; }
+    overflow-wrap: anywhere; word-break: break-word; }
   thead { display: table-header-group; }
   tr { break-inside: avoid; }
   /* Greyscale offices: the glyph carries the meaning, the border carries weight. */
   .st, .pill { border-width: 1pt; }
-  th, .st, .pill, .tile, .verdict, .ctrl, .trust, .bar > i {
+  th, .st, .pill, .tile, .verdict, .ctrl, .callout, .print-head {
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* The bar is four indistinguishable greys on paper; the headline sentence
+     and the tiles carry the same information better. */
+  .bar { display: none; }
+  /* The print-head's "Verification result" row is authoritative, so the
+     on-screen band would only repeat it in different words. */
+  .trust { display: none; }
+  /* The assurance list is the reason the paper is worth filing, but it must
+     not lead: it belongs after the assessment. */
+  details.vdetails { margin-top: 24pt; break-before: auto; }
+  .callout { border-left: 2pt solid #1F4E79; }
 }
 </style>
 </head>
@@ -334,7 +369,11 @@ table.rec th, table.rec td { white-space: nowrap; }
       or choose it below &middot; also accepts signed SBOM and VEX exports
     </p>
     <label class="sr-only" for="file">Evidence pack, SBOM or VEX file</label>
-    <input id="file" type="file" multiple accept=".json,.zip">
+    <!-- Focusable-but-invisible AND a visible button meant two tab stops for
+         one action, one of which drew a focus ring on a 1px invisible box.
+         The button is the tab stop; the input stays in the a11y tree with its
+         label for assistive tech that drives the file picker directly. -->
+    <input id="file" type="file" multiple accept=".json,.zip" tabindex="-1">
     <button type="button" class="btn" id="choose">Choose a file&hellip;</button>
   </div>
   <p class="sub" style="margin-top:16px">
@@ -355,7 +394,9 @@ table.rec th, table.rec td { white-space: nowrap; }
 
 <div id="parse-error" class="hidden" role="alert"></div>
 
-<div id="results" class="hidden" aria-live="polite">
+<p id="announce" class="sr-only" role="status" aria-live="polite"></p>
+
+<div id="results" class="hidden">
   <!-- Print-only identity block: a page in an evidence file that does not say
        what it is, what it covers and how it was checked is worthless six
        months later. -->
@@ -649,6 +690,11 @@ const EvidenceCore = (() => {
     x = powMod(x, (P + 3n) / 8n);
     if (mod(x * x) !== mod(u * inv(v))) x = mod(x * SQRT_M1);
     if (mod(x * x) !== mod(u * inv(v))) return null;   // not a square: off-curve
+    // RFC 8032: x = 0 with the sign bit set is not a valid encoding. Without
+    // this, two distinct encodings of the same point both verify -- signature
+    // malleability, which is worth closing in a tool whose output is itself
+    // evidence.
+    if (x === 0n && sign === 1n) return null;
     if ((x & 1n) !== sign) x = mod(-x);
     return [x, y, 1n, mod(x * y)];
   }
@@ -928,12 +974,25 @@ const EvidenceCore = (() => {
    *   true  = checked and passed
    *   false = checked and FAILED (hard integrity failure)
    */
+  /* Copying parsed data into a plain {} re-creates the "__proto__" hazard the
+     parser was hardened against: the assignment sets the prototype and the key
+     vanishes from Object.keys, so it never reaches canonicalString and the
+     hash is computed over bytes that are NOT the file's. Every structure that
+     receives attacker-controlled keys is therefore prototype-less. */
+  const bare = () => Object.create(null);
+
   const PACK_CTX = 'sentari-evidence-pack/v1';
   const SIGNING_ALGORITHM = 'ed25519';
-  const ARTIFACT_CTX = {
+  /* A plain object literal inherits "constructor", "toString", ... so a
+     context of "constructor" would test truthy and slip past the
+     unknown-format guard. Prototype-less, and looked up by own-key only. */
+  const ARTIFACT_CTX = Object.assign(bare(), {
     'sentari-sbom/v1': 'SBOM',
     'sentari-vex/v1': 'VEX',
-  };
+  });
+  const own = (map, k) =>
+    (typeof k === 'string' && Object.prototype.hasOwnProperty.call(map, k))
+      ? map[k] : undefined;
 
   function newResult() {
     return {
@@ -1027,11 +1086,14 @@ const EvidenceCore = (() => {
       r.notes.push('no usable public key in the signature block');
     } else {
       const kid = 'ed25519:' + sha256Hex(pub).slice(0, 32);
+      // Interpolating a non-string key_id (an object, say) into a template
+      // literal throws on a null-prototype value, and the exception would
+      // escape as "could not be read" instead of "tampered". An attacker must
+      // never get to choose which of those two an auditor sees.
+      const shownKid = typeof sigBlock.key_id === 'string' ? sigBlock.key_id : '(not a string)';
       r.key_id_matches_material = kid === sigBlock.key_id;
       if (!r.key_id_matches_material) {
-        r.notes.push(
-          `key_id != fingerprint(public_key): ${sigBlock.key_id} vs ${kid}`
-        );
+        r.notes.push('key_id != fingerprint(public_key): ' + shownKid + ' vs ' + kid);
       }
       if (sigBytes === null) {
         r.signature_valid = false;
@@ -1062,9 +1124,8 @@ const EvidenceCore = (() => {
     if (anchor) {
       r.key_id_matches_anchor = sigBlock.key_id === anchor;
       if (!r.key_id_matches_anchor) {
-        r.notes.push(
-          `signing key is not the one you pinned: ${sigBlock.key_id} != ${anchor}`
-        );
+        const shown = typeof sigBlock.key_id === 'string' ? sigBlock.key_id : '(not a string)';
+        r.notes.push('signing key is not the one you pinned: ' + shown + ' != ' + anchor);
       }
     }
   }
@@ -1099,7 +1160,7 @@ const EvidenceCore = (() => {
       if (isRowList) {
         subject = src.rows;
       } else {
-        subject = {};
+        subject = bare();
         for (const k of keys) if (k !== 'sha256') subject[k] = src[k];
       }
       let got;
@@ -1127,7 +1188,7 @@ const EvidenceCore = (() => {
     const r = newResult();
     const sig = wrapper.signature;
     const ctx = sig.context;
-    r.kind = ARTIFACT_CTX[ctx];
+    r.kind = own(ARTIFACT_CTX, ctx);
     // Layer 2 and Layer 3 do not EXIST for this class. The spec is emphatic
     // that this must not read as "could have checked, didn't" (§12.6.5).
     r.layer2_na = true;
@@ -1168,7 +1229,7 @@ const EvidenceCore = (() => {
       sig = obj.signature;
       frozen = obj.frozen_inputs;
     } else {
-      payload = {};
+      payload = bare();
       for (const k of Object.keys(obj)) {
         if (k !== 'signature' && k !== 'frozen_inputs') payload[k] = obj[k];
       }
@@ -1181,7 +1242,7 @@ const EvidenceCore = (() => {
     }
 
     // --- Layer 1: blank content_sha256, canonicalise, sha256 (§5.1/§5.2) ---
-    const core = {};
+    const core = bare();
     for (const k of Object.keys(payload)) core[k] = payload[k];
     const stored = core.content_sha256;
     core.content_sha256 = '';
@@ -1235,7 +1296,7 @@ const EvidenceCore = (() => {
     // accepted (spec §12.6 step 4).
     if (obj.document !== undefined && obj.signature && typeof obj.signature === 'object') {
       const ctx = obj.signature.context;
-      if (ARTIFACT_CTX[ctx]) return verifyDocument(obj, anchor);
+      if (own(ARTIFACT_CTX, ctx)) return verifyDocument(obj, anchor);
       const r = newResult();
       r.kind = 'unknown';
       r.payload_intact = false;
@@ -1305,39 +1366,55 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   };
 
-  const STATUS_LABELS = {
+  /* Every one of these is indexed with a key taken from an untrusted
+     artifact. A plain object literal inherits "constructor", "toString" and
+     friends, so a status of "constructor" would render a JS function body
+     into the report. Prototype-less tables, own-key lookups only. */
+  const table = (o) => Object.freeze(Object.assign(Object.create(null), o));
+  const pick = (map, k, fallback) =>
+    (typeof k === 'string' && Object.prototype.hasOwnProperty.call(map, k))
+      ? map[k] : fallback;
+
+  const STATUS_LABELS = table({
     compliant: 'Compliant', at_risk: 'At risk',
     non_compliant: 'Non-compliant', not_assessed: 'Not assessed',
-  };
+  });
   /* A glyph on every status, so a greyscale office printer still carries the
      meaning that colour carries on screen. */
-  const STATUS_GLYPH = {
+  const STATUS_GLYPH = table({
     compliant: '✓', at_risk: '!',
     non_compliant: '✕', not_assessed: '–',
-  };
+  });
   const STATUS_ORDER = ['non_compliant', 'at_risk', 'not_assessed', 'compliant'];
   /* What the reader must DO about it. A status word alone does not tell a
      compliance officer whether this lands on their worklist. */
-  const STATUS_ACTION = {
+  const STATUS_ACTION = table({
     non_compliant: 'Requires remediation',
     at_risk: 'Requires attention',
     not_assessed: 'Assess manually',
     compliant: 'Evidenced',
-  };
+  });
   /* Self-explaining labels. "Derived" means nothing to a first-time reader. */
-  const GRADE_LABELS = {
-    derived: 'Measured automatically',
-    observed: 'Read from a system of record',
-    declared: 'Declared by a named person',
-  };
-  const BASIS_LABELS = {
+  /* Two different facts, so they must not read as one. `basis` is HOW the
+     verdict was reached; `evidence_class` is WHERE the evidence behind it came
+     from. Rendered together as "Checked automatically - Measured automatically"
+     they looked like the same sentence twice. */
+  const GRADE_LABELS = table({
+    derived: 'measured from the organisation\u2019s own systems',
+    observed: 'read from a system of record',
+    declared: 'declared by a named person',
+  });
+  const GRADE_TERMS = table({
+    derived: 'Measured', observed: 'Observed', declared: 'Declared',
+  });
+  const BASIS_LABELS = table({
     automated: 'Checked automatically',
     attested: 'Signed off by a person',
     manual: 'Assessed manually',
-  };
+  });
   /* Database column names are not a reader interface. Unknown keys fall back
      to a de-underscored sentence case, so nothing is ever hidden. */
-  const FIELD_LABELS = {
+  const FIELD_LABELS = table({
     cve_findings: 'Vulnerability findings',
     attestations: 'Sign-offs on record',
     runtime_eol: 'Runtimes past end-of-life',
@@ -1370,9 +1447,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     attested_at: 'Signed off', approved_at: 'Approved',
     review_due: 'Review due', control_id: 'Control',
     attestation_id: 'Reference', evidence_sha256: 'Evidence hash',
-  };
-  const label = (k) => FIELD_LABELS[k] ||
-    (String(k).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+  });
+  const label = (k) => pick(FIELD_LABELS, k,
+    String(k).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+
+  const KNOWN_STATUS = ['compliant', 'at_risk', 'non_compliant', 'not_assessed'];
+  /* `esc` does not escape whitespace, and status is interpolated into
+     class="st st-<status>". A status of "compliant hidden" would attach
+     .hidden and make the row vanish. Anything unrecognised becomes a visible
+     "unrecognised" state rather than silently rendering nowhere. */
+  const safeStatus = (v) => (KNOWN_STATUS.indexOf(v) >= 0 ? v : 'unknown');
 
   const CHECK_ROWS = [
     ['payload_intact', 'The contents are unaltered since signing'],
@@ -1383,7 +1467,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     ['key_id_matches_material', 'The key fingerprint matches the key itself'],
   ];
 
-  const BAD_VERDICTS = {
+  const BAD_VERDICTS = table({
     tampered: {
       cls: 'v-bad', head: 'Altered — do not rely on this file',
       body: 'Something in this file changed after it was signed, so nothing below ' +
@@ -1397,11 +1481,28 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
             'file may come from a different organisation. This is not tampering. ' +
             'Check the fingerprint against the one currently published to you.',
     },
-  };
+  });
 
   let current = null;            // { obj, extras, members, result, fileName }
   let currentAnchor = '';
   let statusFilter = 'all';
+
+  /* The pack states its own scope. Hard-coding "all devices in the estate"
+     made a device- or workspace-scoped pack claim fleet coverage -- on screen
+     AND in the printed identity block of a document that goes in an evidence
+     file. Of everything here, that is what an assessor could actually be
+     misled by. */
+  const scopeText = (sc) => {
+    const k = sc && typeof sc.kind === 'string' ? sc.kind : '';
+    if (k === 'fleet') return 'All devices in the estate';
+    if (k === 'device') {
+      return 'One device: ' + String(sc.device_id || sc.hostname || 'unnamed');
+    }
+    if (k === 'workspace') {
+      return 'Workspace: ' + String(sc.name || sc.workspace_id || 'unnamed');
+    }
+    return k ? 'Scope: ' + k : 'Scope not stated in this pack';
+  };
 
   const fmtDate = (iso) => {
     const d = new Date(iso);
@@ -1413,6 +1514,40 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     return date + ' at ' + time + ' UTC';
   };
 
+  /* The signature binds frozen_inputs_sha256, so a pack that DECLARES it but
+     ships without the frozen blob has had an entire verification layer
+     removed -- and the Ed25519 check still passes, because the hash it covers
+     sits inside the signed envelope either way. The spec verdict stays
+     "verified" (the reference verifiers agree, and CONFORMANCE.md fixes it),
+     so that is left alone. But the page must not present it as a clean
+     result, and the printed record must say what was not checked: deleting
+     one file from a bundle must not buy a green tag. */
+  function incompleteReason(r, sig) {
+    if (r.kind !== 'pack') return '';
+    if (r.frozen_inputs_valid === null && typeof sig.frozen_inputs_sha256 === 'string') {
+      return 'the source records this report was computed from were not included ' +
+        'in the file, so the figures could not be checked against them';
+    }
+    if (r.hadManifest && r.manifest_valid === null) {
+      return 'the bundle\u2019s file list is not signed, so the set of files in it ' +
+        'could not be trusted';
+    }
+    return '';
+  }
+
+  /* Green requires BOTH a matching fingerprint AND a signature that actually
+     verified: a pack shaped {payload:{...,signature}} leaves signature_valid
+     null while still carrying a key_id, which previously rendered "Matches"
+     beside a file nothing had been checked on. */
+  function pinPill(r, matches, pinned) {
+    if (!pinned) return '<span class="pill p-warn">Not yet confirmed</span>';
+    if (!matches) return '<span class="pill p-bad">Does not match what you pinned</span>';
+    if (r.signature_valid !== true) {
+      return '<span class="pill p-warn">Fingerprint matches, but no signature was verified</span>';
+    }
+    return '<span class="pill p-ok">Matches \u2014 this is the signer you expected</span>';
+  }
+
   /* ---- trust: green is earned (see rule 1 at the top) ------------------- */
   function renderTrust(r, obj) {
     const v = C.verdictOf(r);
@@ -1422,30 +1557,33 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const pinned = currentAnchor;
     const matches = pinned && kid && pinned === kid;
 
+    const gap = incompleteReason(r, sig);
     let head = '';
-    if (v === 'verified' && matches) {
-      head = '<div class="trust t-ok"><strong>✓ Verified</strong>' +
+    if (v === 'verified' && matches && !gap) {
+      head = '<div class="trust t-ok"><strong id="verdict-head" tabindex="-1">' +
+        '✓ Verified</strong>' +
         '<span class="t-msg">Unaltered since signing, and signed with the ' +
         'fingerprint you pinned.</span></div>';
+    } else if (v === 'verified' && gap) {
+      head = '<div class="trust t-warn"><strong id="verdict-head" tabindex="-1">' +
+        '⚠ Checked, but not in full</strong>' +
+        '<span class="t-msg">What is present is unaltered since signing, but ' +
+        esc(gap) + '. Ask for a complete pack before relying on the figures.</span></div>';
     } else if (v === 'verified') {
       // The maths is right; the signer is not established. Not green.
-      head = '<div class="trust t-warn"><strong>⚠ Unaltered — signer not ' +
-        'yet confirmed</strong><span class="t-msg">Nothing in this file has changed ' +
+      head = '<div class="trust t-warn"><strong id="verdict-head" tabindex="-1">' +
+        '⚠ Unaltered — signer not yet confirmed</strong><span class="t-msg">Nothing in this file has changed ' +
         'since it was signed. To confirm it came from the organisation you expect, ' +
         'enter the fingerprint they published to you.</span></div>';
     } else {
-      const spec = BAD_VERDICTS[v];
+      const spec = pick(BAD_VERDICTS, v, BAD_VERDICTS.tampered);
       head = '<div class="verdict ' + spec.cls + '"><h2 id="verdict-head" tabindex="-1">' +
         spec.head + '</h2><p>' + spec.body + '</p></div>';
     }
 
     // The pin is never hidden: it is the only thing standing between
     // "internally consistent" and "authentic".
-    const pinState = !pinned
-      ? '<span class="pill p-warn">Not yet confirmed</span>'
-      : matches
-        ? '<span class="pill p-ok">Matches — this is the signer you expected</span>'
-        : '<span class="pill p-bad">Does not match what you pinned</span>';
+    const pinState = pinPill(r, matches, pinned);
 
     const pinBlock =
       '<div class="pinrow noprint"><label for="anchor">Confirm who signed it</label>' +
@@ -1493,7 +1631,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     }
 
     $('trust').innerHTML = head + pinBlock +
-      '<details class="vdetails noprint"><summary>What exactly was checked</summary>' +
+      '<details class="vdetails"><summary>What exactly was checked</summary>' +
       '<div class="card"><ul class="checks">' + checks + '</ul>' +
       '<div class="legend">' + notes + '</div></div></details>';
 
@@ -1517,42 +1655,55 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
     const v = C.verdictOf(r);
     const matches = currentAnchor && kid && currentAnchor === kid;
-    $('pinstate').innerHTML = !currentAnchor
-      ? '<span class="pill p-warn">Not yet confirmed</span>'
-      : matches
-        ? '<span class="pill p-ok">Matches — this is the signer you expected</span>'
-        : '<span class="pill p-bad">Does not match what you pinned</span>';
+    $('pinstate').innerHTML = pinPill(r, matches, currentAnchor);
 
     // Only the headline band changes; the input keeps focus and caret because
     // we never replace it.
+    const gap = incompleteReason(r, sig);
     const holder = $('trust').firstElementChild;
-    if (v === 'verified' && matches) {
-      holder.outerHTML = '<div class="trust t-ok"><strong>✓ Verified</strong>' +
+    if (v === 'verified' && matches && !gap) {
+      holder.outerHTML = '<div class="trust t-ok"><strong id="verdict-head" ' +
+        'tabindex="-1">✓ Verified</strong>' +
         '<span class="t-msg">Unaltered since signing, and signed with the ' +
         'fingerprint you pinned.</span></div>';
+    } else if (v === 'verified' && gap) {
+      holder.outerHTML = '<div class="trust t-warn"><strong id="verdict-head" ' +
+        'tabindex="-1">⚠ Checked, but not in full</strong><span class="t-msg">What is present is unaltered since ' +
+        'signing, but ' + esc(gap) + '.</span></div>';
     } else if (v === 'verified') {
-      holder.outerHTML = '<div class="trust t-warn"><strong>⚠ Unaltered — ' +
-        'signer not yet confirmed</strong><span class="t-msg">Nothing in this file ' +
+      holder.outerHTML = '<div class="trust t-warn"><strong id="verdict-head" ' +
+        'tabindex="-1">⚠ Unaltered — signer not yet confirmed</strong><span class="t-msg">Nothing in this file ' +
         'has changed since it was signed. To confirm it came from the organisation ' +
         'you expect, enter the fingerprint they published to you.</span></div>';
     } else {
-      const spec = BAD_VERDICTS[v];
-      holder.outerHTML = '<div class="verdict ' + spec.cls + '"><h2>' + spec.head +
+      const spec = pick(BAD_VERDICTS, v, BAD_VERDICTS.tampered);
+      holder.outerHTML = '<div class="verdict ' + spec.cls + '"><h2 id="verdict-head" tabindex="-1">' + spec.head +
         '</h2><p>' + spec.body + '</p></div>';
     }
   }
 
   /* ---- one control ------------------------------------------------------ */
   function controlBlock(c, graded) {
-    const st = c.status || '';
-    const id = 'ctrl-' + String(c.id || c.article_ref || '').replace(/[^\w.-]/g, '');
+    const st = safeStatus(c.status);
+    const id = 'ctrl-' + String(
+      (typeof c.id === 'string' && c.id) ||
+      (typeof c.article_ref === 'string' && c.article_ref) || '').replace(/[^\w.-]/g, '');
     let h = '<details class="ctrl ctrl-' + esc(st) + '" id="' + esc(id) +
       '" data-status="' + esc(st) + '">';
+    // "ID.RA-1 (Important)" is an identifier AND a priority glued together.
+    // The priority is a word a compliance officer acts on, so it does not
+    // belong inside a monospace identifier run.
+    const refRaw = String(c.article_ref === undefined ? '' : c.article_ref);
+    const m = refRaw.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+    const ref = m ? m[1] : refRaw;
+    const prio = m ? m[2] : '';
     h += '<summary><span class="st st-' + esc(st) + '">' +
-      esc(STATUS_GLYPH[st] || '') + ' ' + esc(STATUS_LABELS[st] || st) + '</span>' +
-      '<span class="ctrl-ref">' + esc(c.article_ref) + '</span>' +
+      esc(pick(STATUS_GLYPH, st, '?')) + ' ' +
+      esc(pick(STATUS_LABELS, st, 'Unrecognised status')) + '</span>' +
+      '<span class="ctrl-ref">' + esc(ref) + '</span>' +
+      (prio ? '<span class="prio">' + esc(prio) + '</span>' : '') +
       '<span class="ctrl-title">' + esc(c.title) + '</span>' +
-      '<span class="ctrl-act a-' + esc(st) + '">' + esc(STATUS_ACTION[st] || '') +
+      '<span class="ctrl-act a-' + esc(st) + '">' + esc(pick(STATUS_ACTION, st, '')) +
       '</span></summary><div class="body">';
     h += '<p class="ctrl-sum">' + esc(c.summary) + '</p>';
     const findings = c.findings || [];
@@ -1565,10 +1716,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       }
       h += '</ul>';
     }
-    h += '<p class="ctrl-meta">' + esc(BASIS_LABELS[c.basis] || c.basis) +
+    h += '<p class="ctrl-meta">' + esc(pick(BASIS_LABELS, c.basis, c.basis)) +
       (graded && c.evidence_class
-        ? ' &middot; ' + esc(GRADE_LABELS[c.evidence_class] || c.evidence_class) : '') +
-      '</p>';
+        ? ' &middot; evidence ' + esc(pick(GRADE_LABELS, c.evidence_class, c.evidence_class))
+        : '') + '</p>';
     h += renderRefs(c) + '</div></details>';
     return h;
   }
@@ -1582,7 +1733,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       const ref = (x && typeof x === 'object') ? x.ref : x;
       const cls = (x && typeof x === 'object') ? x.class : null;
       return '<li><span class="mono">' + esc(ref) + '</span>' +
-        (cls ? ' <span class="pill p-na">' + esc(GRADE_LABELS[cls] || cls) + '</span>' : '') +
+        (cls ? ' <span class="pill p-na">' + esc(pick(GRADE_TERMS, cls, cls)) + '</span>' : '') +
         '</li>';
     }).join('');
     return '<details class="refs"><summary>Supporting records (' + refs.length +
@@ -1593,20 +1744,24 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   function renderPack(payload) {
     const controls = payload.controls || [];
     const coverage = payload.coverage || {};
-    const counts = {};
-    controls.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+    const counts = Object.create(null);
+    controls.forEach((c) => {
+      const k = safeStatus(c.status);
+      counts[k] = (counts[k] || 0) + 1;
+    });
     const graded = controls.some((c) => c.evidence_class);
-    const by = (s) => controls.filter((c) => c.status === s);
+    const by = (st) => controls.filter((c) => safeStatus(c.status) === st);
     const total = controls.length;
     const bad = counts.non_compliant || 0;
     const risk = counts.at_risk || 0;
     const none = counts.not_assessed || 0;
 
-    let h = '<h2 class="doc-title">' + esc(payload.framework || 'Compliance') +
-      ' assessment</h2>';
+    let h = '<h1 class="doc-title">' + esc(payload.framework || 'Compliance') +
+      ' assessment</h1>';
     h += '<p class="doc-meta">' + esc(payload.framework_version || '') +
-      ' &middot; all devices in the estate &middot; report generated ' +
-      esc(fmtDate(payload.generated_at)) + '</p>';
+      ' &middot; ' + esc(scopeText(payload.scope)) +
+      ' &middot; report generated ' + esc(fmtDate(payload.generated_at)) +
+      ' &middot; catalogue ' + esc(payload.catalog_version) + '</p>';
 
     // A sentence, not four tiles: this is the finding of the whole document.
     let headline;
@@ -1650,9 +1805,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     if (total) {
       h += '<h2 class="sec">All ' + total + ' assessed controls</h2><div class="index">';
       controls.forEach((c) => {
-        const id = 'ctrl-' + String(c.id || c.article_ref || '').replace(/[^\w.-]/g, '');
-        h += '<a href="#' + esc(id) + '" class="st st-' + esc(c.status) + '">' +
-          esc(c.article_ref) + '</a>';
+        const id = 'ctrl-' + String(
+          (typeof c.id === 'string' && c.id) ||
+          (typeof c.article_ref === 'string' && c.article_ref) || '').replace(/[^\w.-]/g, '');
+        const r0 = String(c.article_ref === undefined ? '' : c.article_ref);
+        const mm = r0.match(/^(.*?)\s*\([^)]+\)\s*$/);
+        h += '<a href="#' + esc(id) + '" class="st st-' + esc(safeStatus(c.status)) + '">' +
+          esc(mm ? mm[1] : r0) + '</a>';
       });
       h += '</div>';
       h += '<div class="filters noprint" role="group" aria-label="Filter controls by status">';
@@ -1663,13 +1822,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
             STATUS_LABELS[s] + ' ' + counts[s] + '</button>';
         }
       });
-      h += '</div>';
+      h += '<button type="button" class="btn btn-quiet" id="expandall" ' +
+        'aria-pressed="false">Expand all</button>';
+      h += '</div><p id="filterstate" class="filterstate hidden noprint"></p>';
     }
 
-    const attention = by('non_compliant').concat(by('at_risk'));
+    const attention = by('non_compliant').concat(by('at_risk')).concat(by('unknown'));
+    h += '<div data-section id="sec-attention">';
     h += '<h2 class="sec">Needs attention' +
       '<span class="cnt cnt-non_compliant">' + attention.length + '</span></h2>';
-    h += '<div id="sec-attention">' + (attention.length
+    h += (attention.length
       ? attention.map((c) => controlBlock(c, graded)).join('')
       : '<div class="card sub">No control came back non-compliant or at risk.</div>') + '</div>';
 
@@ -1703,7 +1865,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   }
 
   function section(id, title, count, tone, inner, note) {
-    return '<details class="sec-d" id="sec-' + id + '"><summary>' +
+    return '<details class="sec-d" data-section id="sec-' + id + '"><summary>' +
       '<h2 class="sec" style="margin:0;border:0;padding:0">' + esc(title) +
       '<span class="cnt' + (tone ? ' cnt-' + tone : '') + '">' + count + '</span></h2>' +
       (note ? '<span class="sub">&mdash; ' + esc(note) + '</span>' : '') +
@@ -1755,7 +1917,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         });
         inner += '</dl>';
       }
-      if (rows.length) inner += '<h3>Records</h3>' + renderRows(name, rows);
+      if (rows.length) {
+        inner += '<h3>Records</h3>';
+        if (rows.length > 12) {
+          inner += '<input type="search" class="rowfilter noprint" data-rows="' +
+            esc(name) + '" placeholder="Filter these records\u2026" ' +
+            'aria-label="Filter records in ' + esc(label(name)) + '">';
+        }
+        inner += renderRows(name, rows);
+      }
       else if (!keys.length) inner += '<p class="sub">This source froze no records.</p>';
       inner += '</details>';
     });
@@ -1766,13 +1936,23 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
   const ROW_PAGE = 100;
 
+  const MAX_COLS = 40;
+
   function renderRows(name, rows, showAll) {
+    // A Set, not Array.includes: the old scan was O(rows x cols) over EVERY
+    // row (the page cap bounds rendering, not discovery), so a 20k-row source
+    // with varied keys hung the tab before painting anything.
+    const seen = new Set();
     const cols = [];
-    rows.forEach((row) => {
-      if (row && typeof row === 'object' && !Array.isArray(row)) {
-        Object.keys(row).forEach((k) => { if (!cols.includes(k)) cols.push(k); });
+    let moreCols = 0;
+    for (const row of rows) {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+      for (const k of Object.keys(row)) {
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (cols.length < MAX_COLS) cols.push(k); else moreCols++;
       }
-    });
+    }
     const shown = showAll ? rows : rows.slice(0, ROW_PAGE);
     let h = '<div class="scroll"><table class="rec"><thead><tr>';
     cols.forEach((c) => { h += '<th>' + esc(label(c)) + '</th>'; });
@@ -1788,6 +1968,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       h += '</tr>';
     });
     h += '</tbody></table></div>';
+    if (moreCols) {
+      h += '<p class="sub">' + moreCols + ' further field(s) in these records are not ' +
+        'shown as columns.</p>';
+    }
     if (!showAll && rows.length > ROW_PAGE) {
       // Printed evidence must never silently omit rows, so this line prints.
       h += '<p class="sub">Showing the first ' + ROW_PAGE + ' of ' + rows.length +
@@ -1802,7 +1986,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const comps = doc.components || [];
     const stmts = doc.statements || doc.vulnerabilities || [];
     const kind = r.kind === 'SBOM' ? 'Software bill of materials' : 'Vulnerability statement';
-    let h = '<h2 class="doc-title">' + esc(kind) + '</h2>';
+    let h = '<h1 class="doc-title">' + esc(kind) + '</h1>';
     h += '<p class="doc-meta">Signed ' + esc(r.kind) + ' export &middot; ' +
       esc(doc.bomFormat || doc.spdxVersion || doc['@context'] || 'unknown format') + '</p>';
     h += '<div class="tiles">';
@@ -1830,14 +2014,18 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   function renderPrintHead(payload, r, obj) {
     const sig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
     const v = C.verdictOf(r);
-    const result = v === 'verified'
-      ? (currentAnchor && currentAnchor === sig.key_id
-        ? 'Verified — unaltered, signed by the pinned fingerprint'
-        : 'Unaltered since signing; signer NOT confirmed against a pinned fingerprint')
-      : v === 'tampered' ? 'ALTERED AFTER SIGNING — rejected'
-      : 'Signed by a key other than the pinned fingerprint';
+    const gap = incompleteReason(r, sig);
+    let result;
+    if (v === 'tampered') result = 'ALTERED AFTER SIGNING — rejected';
+    else if (v !== 'verified') result = 'Signed by a key other than the pinned fingerprint';
+    else if (gap) result = 'INCOMPLETE — what is present is unaltered, but ' + gap;
+    else if (currentAnchor && currentAnchor === sig.key_id) {
+      result = 'Verified — unaltered, signed by the pinned fingerprint';
+    } else {
+      result = 'Unaltered since signing; signer NOT confirmed against a pinned fingerprint';
+    }
     const rows = [
-      ['Scope', 'All devices in the estate'],
+      ['Scope', scopeText(payload.scope)],
       ['Report generated', fmtDate(payload.generated_at)],
       ['Catalogue version', payload.catalog_version],
       ['Pack identifier', payload.pack_id],
@@ -1853,6 +2041,36 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       esc(payload.framework_version || '') + '</p><dl>' +
       rows.filter(([, v2]) => v2).map(([k, v2]) =>
         '<dt>' + esc(k) + '</dt><dd>' + esc(v2) + '</dd>').join('') + '</dl>';
+  }
+
+  /* Every argument for the pack's print identity block applies to a signed
+     SBOM or VEX: paper that does not say what it is, what checked it and when
+     is worthless in an evidence file six months later. */
+  function renderDocPrintHead(obj, r) {
+    const doc = obj.document || {};
+    const sig = obj.signature || {};
+    const v = C.verdictOf(r);
+    const result = v === 'tampered' ? 'ALTERED AFTER SIGNING \u2014 rejected'
+      : v !== 'verified' ? 'Signed by a key other than the pinned fingerprint'
+      : (currentAnchor && currentAnchor === sig.key_id)
+        ? 'Verified \u2014 unaltered, signed by the pinned fingerprint'
+        : 'Unaltered since signing; signer NOT confirmed against a pinned fingerprint';
+    const rows = [
+      ['Document type', r.kind === 'SBOM' ? 'Software bill of materials'
+        : 'Vulnerability statement (VEX)'],
+      ['Format', doc.bomFormat || doc.spdxVersion || doc['@context']],
+      ['Specification version', C.plain(doc.specVersion)],
+      ['Document identifier', doc.serialNumber || doc.id || doc.documentNamespace],
+      ['Signing key', sig.key_id],
+      ['Fingerprint pinned', currentAnchor || 'none supplied'],
+      ['Verification result', result],
+      ['Printed on', fmtDate(new Date().toISOString())],
+      ['Checked with', 'Sentari offline verifier (verify.html)'],
+    ];
+    $('print-head').innerHTML =
+      '<p class="pt">Signed ' + esc(r.kind) + ' export</p><dl>' +
+      rows.filter(([, val]) => val).map(([k, val]) =>
+        '<dt>' + esc(k) + '</dt><dd>' + esc(val) + '</dd>').join('') + '</dl>';
   }
 
   /* ---- drive ------------------------------------------------------------ */
@@ -1873,13 +2091,58 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       wireReport(frozen);
     } else if (r.kind === 'SBOM' || r.kind === 'VEX') {
       $('report').innerHTML = renderDocument(obj, r);
-      $('print-head').innerHTML = '';
+      renderDocPrintHead(obj, r);
       wireReport(null);
     } else {
       $('report').innerHTML = '';
     }
-    const h = document.querySelector('#verdict-head');
+    // A polite live region wrapping the whole report would read the entire
+    // document aloud -- title, every tile, all sixty index chips, every row.
+    // One sentence, and focus moved to the verdict.
+    announce(summarise(r, obj));
+    const h = document.getElementById('verdict-head');
     if (h) h.focus();
+  }
+
+  function announce(msg) {
+    const el = $('announce');
+    if (el) el.textContent = msg;
+  }
+
+  function summarise(r, obj) {
+    const v = C.verdictOf(r);
+    const sig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
+    const gap = incompleteReason(r, sig);
+    let head;
+    if (v === 'tampered') head = 'This file was altered after signing. Do not rely on it.';
+    else if (v === 'key_unknown') head = 'Signed by a different key than the one you pinned.';
+    else if (gap) head = 'Checked, but not in full.';
+    else if (currentAnchor && sig.key_id === currentAnchor) head = 'Verified.';
+    else head = 'Unaltered since signing; signer not yet confirmed.';
+    if (r.kind !== 'pack') return head;
+    const payload = (obj.payload && typeof obj.payload === 'object') ? obj.payload : obj;
+    const cs = (payload.controls || []);
+    const bad = cs.filter((c) => safeStatus(c.status) === 'non_compliant').length;
+    const risk = cs.filter((c) => safeStatus(c.status) === 'at_risk').length;
+    return head + ' ' + cs.length + ' controls assessed, ' + bad + ' non-compliant, ' +
+      risk + ' at risk.';
+  }
+
+  function wireRowFilters() {
+    document.querySelectorAll('input.rowfilter').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const q = inp.value.trim().toLowerCase();
+        const tbody = inp.parentElement.querySelector('table.rec tbody');
+        if (!tbody) return;
+        let shown = 0;
+        tbody.querySelectorAll('tr').forEach((tr) => {
+          const hit = !q || tr.textContent.toLowerCase().indexOf(q) >= 0;
+          tr.classList.toggle('hidden', !hit);
+          if (hit) shown++;
+        });
+        announce(shown + ' record(s) match.');
+      });
+    });
   }
 
   function wireReport(frozen) {
@@ -1895,20 +2158,29 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         wrap.innerHTML = renderRows(name, rows, true);
         old.replaceWith(wrap.firstElementChild);
         btn.closest('p').remove();
+        wireRowFilters();
       });
     });
     document.querySelectorAll('.filters button').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        statusFilter = btn.getAttribute('data-filter');
-        document.querySelectorAll('.filters button').forEach((b) =>
-          b.setAttribute('aria-pressed', String(b === btn)));
-        applyFilter();
-      });
+      btn.addEventListener('click', () => setFilter(btn.getAttribute('data-filter')));
     });
+    const ex = $('expandall');
+    if (ex) {
+      ex.addEventListener('click', () => {
+        const open = ex.getAttribute('aria-pressed') !== 'true';
+        ex.setAttribute('aria-pressed', String(open));
+        ex.textContent = open ? 'Collapse all' : 'Expand all';
+        document.querySelectorAll('#report details.ctrl').forEach((d) => { d.open = open; });
+      });
+    }
     // Following an index link must reveal the control even when its section
     // is collapsed, or the link silently does nothing.
+    wireRowFilters();
     document.querySelectorAll('.index a').forEach((a) => {
       a.addEventListener('click', () => {
+        // A filtered-out row still carries .hidden { display:none !important },
+        // so opening it would scroll nowhere. Clear the filter first.
+        if (statusFilter !== 'all') setFilter('all');
         // getElementById, not querySelector: control ids legitimately contain
         // dots ("cyfun.id.am-1"), which a CSS selector reads as class
         // separators -- so the lookup silently finds nothing and the link
@@ -1925,34 +2197,97 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     });
   }
 
+  /* Hiding rows without changing anything else left "NEEDS ATTENTION 30"
+     sitting above zero visible rows, which reads as "the 30 vanished". A
+     filter has to restate the page, not just thin it. */
   function applyFilter() {
+    const all = statusFilter === 'all';
     document.querySelectorAll('.ctrl').forEach((el) => {
-      const s = el.getAttribute('data-status');
-      el.classList.toggle('hidden', statusFilter !== 'all' && s !== statusFilter);
+      el.classList.toggle('hidden',
+        !all && el.getAttribute('data-status') !== statusFilter);
     });
-    document.querySelectorAll('details.sec-d').forEach((d) => {
-      if (statusFilter !== 'all' && d.querySelector('.ctrl:not(.hidden)')) d.open = true;
+    // Sections with nothing left to show are hidden outright and closed.
+    document.querySelectorAll('[data-section]').forEach((sec) => {
+      const rows = sec.querySelectorAll('.ctrl');
+      const shown = sec.querySelectorAll('.ctrl:not(.hidden)').length;
+      const empty = rows.length > 0 && shown === 0;
+      sec.classList.toggle('hidden', empty);
+      if (sec.tagName === 'DETAILS') {
+        if (empty) sec.open = false;
+        else if (!all) sec.open = true;
+      }
+      const cnt = sec.querySelector('.cnt');
+      if (cnt && rows.length) {
+        if (!cnt.dataset.total) cnt.dataset.total = cnt.textContent.trim();
+        cnt.textContent = all ? cnt.dataset.total : shown + '/' + cnt.dataset.total;
+      }
     });
+    const bar = $('filterstate');
+    const total = document.querySelectorAll('.ctrl').length;
+    const shown = document.querySelectorAll('.ctrl:not(.hidden)').length;
+    if (bar) {
+      bar.classList.toggle('hidden', all);
+      bar.innerHTML = all ? '' :
+        'Showing <strong>' + shown + '</strong> of ' + total + ' controls \u00b7 ' +
+        esc(pick(STATUS_LABELS, statusFilter, statusFilter)) +
+        ' <button type="button" class="btn btn-quiet" id="clearfilter">Clear filter</button>';
+      const cf = $('clearfilter');
+      if (cf) cf.addEventListener('click', () => setFilter('all'));
+    }
+    announce(all ? 'Showing all ' + total + ' controls.'
+      : 'Showing ' + shown + ' of ' + total + ' controls, ' +
+        pick(STATUS_LABELS, statusFilter, statusFilter) + '.');
   }
 
-  function fail(msg) {
+  function setFilter(next) {
+    statusFilter = next;
+    document.querySelectorAll('.filters button').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-filter') === next)));
+    applyFilter();
+  }
+
+  /* One headline for every failure told a GENUINE pack's holder that their
+     pack was not a pack -- including when the only problem was that this
+     browser cannot inflate a ZIP. They would go back to the issuer for a
+     re-export that fails identically. */
+  const FAIL_COPY = table({
+    nozip: {
+      head: 'This browser cannot open ZIP archives.',
+      body: 'Extract the archive yourself, then select <em>all</em> of the files ' +
+        'inside it at once \u2014 that form is equally valid and this page checks ' +
+        'it identically. Nothing is wrong with the file you were sent.',
+    },
+    unreadable: {
+      head: 'This file could not be read.',
+      body: 'It appears to be damaged or incomplete. If you were sent a ' +
+        '<code>.zip</code>, try dropping the whole archive; if you already ' +
+        'extracted it, select <em>all</em> the files inside it at once. If it keeps ' +
+        'failing, ask whoever sent it to export a fresh copy.',
+    },
+    notpack: {
+      head: 'This does not look like a Sentari evidence pack.',
+      body: 'The file was read successfully but is not in the expected shape. Check ' +
+        'that you opened the right file, and ask whoever sent it to export a fresh ' +
+        'copy if you are unsure.',
+    },
+  });
+
+  function fail(msg, kind) {
     $('busy').classList.add('hidden');
     $('results').classList.add('hidden');
+    const copy = pick(FAIL_COPY, kind, FAIL_COPY.unreadable);
     const el = $('parse-error');
     el.classList.remove('hidden');
-    el.innerHTML = '<h2>This does not look like a Sentari evidence pack.</h2>' +
-      '<p class="prose">The file could not be read. If you were sent a ' +
-      '<code>.zip</code>, try dropping the whole archive; if you have already ' +
-      'extracted it, select <em>all</em> the files inside it at once. If it keeps ' +
-      'failing, ask whoever sent it to export a fresh copy.</p>' +
+    el.innerHTML = '<h2>' + copy.head + '</h2><p class="prose">' + copy.body + '</p>' +
       '<details><summary class="sub">Technical detail</summary>' +
       '<p class="mono" style="margin:8px 0 0">' + esc(msg) + '</p></details>';
+    announce(copy.head);
   }
 
   function verifyObject(obj, extras, fileName) {
     try {
       show(obj, C.verifyJson(obj, currentAnchor || null, extras || {}), extras, null, fileName);
-    } catch (e) { fail(e.message); }
+    } catch (e) { fail(e.message, 'notpack'); }
   }
 
   async function handleFiles(files) {
@@ -1962,11 +2297,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     // Let the "reading" state actually paint before the synchronous crypto.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     try {
-      const byName = {};
+      const byName = Object.create(null);
       let zip = null;
       for (const f of files) {
         if (/\.zip$/i.test(f.name)) zip = f;
-        else byName[f.name.replace(/^.*[\\/]/, '')] = await f.text();
+        else byName[f.name.replace(/^.*[\\/]/, '')] = new Uint8Array(await f.arrayBuffer());
       }
       if (zip) {
         try {
@@ -1982,40 +2317,56 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       const only = Object.keys(byName);
       if (only.length !== 1) {
         return fail('Expected a single .json artifact, a .zip pack, or the files of an ' +
-          'extracted pack (evidence.json + manifest.json + ...).');
+          'extracted pack (evidence.json + manifest.json + ...).', 'notpack');
       }
-      verifyObject(C.parseJson(byName[only[0]]), {}, only[0]);
+      verifyObject(C.parseJson(asText(byName[only[0]])), {}, only[0]);
     } catch (e) {
-      fail(e && e.message ? e.message : String(e));
+      fail(e && e.message ? e.message : String(e), 'unreadable');
     }
   }
 
   function verifyBundle(members, fileName) {
+    let frozenBroken = false;
     let obj;
-    try { obj = C.parseJson(members['evidence.json']); }
-    catch (e) { return fail('evidence.json is missing or not valid JSON.'); }
+    try { obj = C.parseJson(asText(members['evidence.json'])); }
+    catch (e) { return fail('evidence.json is missing or not valid JSON.', 'unreadable'); }
     const extras = {};
     if (members['frozen_inputs.json']) {
-      try { extras.frozenInputs = C.parseJson(members['frozen_inputs.json']); } catch (_e) {}
+      try {
+        extras.frozenInputs = C.parseJson(asText(members['frozen_inputs.json']));
+      } catch (_e) {
+        // F2: a frozen_inputs.json that will not parse is a broken artifact,
+        // not an absent one. Swallowing it silently downgraded Layer 2 to
+        // "not included" and the pack still read as verified.
+        frozenBroken = true;
+      }
     }
     if (members['signature.json'] && !obj.signature) {
-      try { obj = { payload: obj, signature: C.parseJson(members['signature.json']) }; } catch (_e) {}
+      try {
+        obj = { payload: obj, signature: C.parseJson(asText(members['signature.json'])) };
+      } catch (_e) {}
     }
     let r;
     try { r = C.verifyJson(obj, currentAnchor || null, extras); }
     catch (e) { return fail(e.message); }
-    applyManifest(r, members);
+    const psig = (obj && (obj.signature || (obj.payload && obj.payload.signature))) || {};
+    applyManifest(r, members, typeof psig.key_id === 'string' ? psig.key_id : '');
+    if (frozenBroken) {
+      r.frozen_inputs_valid = false;
+      r.notes.push('frozen_inputs.json is present but could not be parsed');
+    }
     show(obj, r, extras, members, fileName);
   }
 
-  function applyManifest(r, members) {
+  function applyManifest(r, members, packKid) {
     const raw = members['manifest.json'];
+    r.hadManifest = raw !== undefined;
     if (!raw) {
       r.notes.push('no manifest.json in this bundle — member hashes not checked');
       return;
     }
     let man;
-    try { man = C.parseJson(raw); }
+    try { man = C.parseJson(asText(raw)); }
     catch (_e) {
       r.manifest_valid = false;
       r.notes.push('manifest.json is not valid JSON');
@@ -2029,17 +2380,38 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         ok = !!sig && C.ed25519Verify(sig, C.canonicalJson(man.payload), pub);
       } catch (_e) { ok = false; }
       if (!ok) r.notes.push('the manifest signature did not verify');
+      // The key is read FROM the manifest, so checking the signature against
+      // it alone proves only that the manifest is self-consistent -- any key
+      // at all would pass. It has to be the same key that signed the pack.
+      const manKid = 'ed25519:' + C.sha256Hex(pub).slice(0, 32);
+      if (packKid && manKid !== packKid) {
+        ok = false;
+        r.notes.push('the file list is signed with a different key (' + manKid +
+          ') than the pack itself (' + packKid + ')');
+      }
     } else {
-      r.notes.push('manifest carries no usable public key — its signature was not checked');
+      // Not a pass. An unsigned file list previously rendered a green tick
+      // against "every file in the bundle matches the signed list".
+      ok = null;
+      r.notes.push('the bundle’s file list carries no usable public key, so it ' +
+        'is not signed — the set of files could not be trusted');
     }
     const files = (man.payload && man.payload.files) || [];
-    const enc = new TextEncoder();
     for (const entry of files) {
-      const body = members[entry && entry.name];
-      if (body === undefined) continue;
-      if (C.sha256Hex(enc.encode(body)) !== entry.sha256) {
+      const nm = entry && entry.name;
+      const body = members[nm];
+      if (body === undefined) {
+        // A member the signed manifest lists but the bundle does not contain
+        // has been REMOVED. Skipping it silently let an attacker delete
+        // frozen_inputs.json and keep a clean result.
         ok = false;
-        r.notes.push('bundle member "' + entry.name + '" does not match the signed manifest');
+        r.notes.push('bundle member "' + String(nm) + '" is listed in the signed ' +
+          'manifest but missing from the bundle');
+        continue;
+      }
+      if (C.sha256Hex(body) !== entry.sha256) {
+        ok = false;
+        r.notes.push('bundle member "' + String(nm) + '" does not match the signed manifest');
       }
     }
     for (const need of ['evidence.json', 'signature.json']) {
@@ -2053,6 +2425,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
   const MAX_MEMBERS = 512;
   const MAX_TOTAL = 256 * 1024 * 1024;   // refuse an archive bomb outright
+  const MAX_MEMBER = 128 * 1024 * 1024;  // ...and a single over-large member
+
+  const TEXT = new TextDecoder();
+  const asText = (b) => (b instanceof Uint8Array ? TEXT.decode(b) : b);
 
   async function readZip(bytes) {
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -2064,7 +2440,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     const count = dv.getUint16(eocd + 10, true);
     if (count > MAX_MEMBERS) throw new Error('ZIP archive has too many members');
     let p = dv.getUint32(eocd + 16, true);
-    const out = {};
+    const out = Object.create(null);   // member names are attacker-controlled
     const dec = new TextDecoder();
     let totalOut = 0;
     for (let i = 0; i < count; i++) {
@@ -2087,13 +2463,36 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         if (typeof DecompressionStream !== 'function') {
           throw new Error('This browser cannot decompress ZIP archives');
         }
+        // Read the inflated stream in CHUNKS and stop at the cap. Calling
+        // arrayBuffer() first materialises the whole member, so one member
+        // that expands to gigabytes exhausted memory before the cap below was
+        // ever consulted.
         const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-        body = new Uint8Array(await new Response(stream).arrayBuffer());
+        const reader = stream.getReader();
+        const chunks = [];
+        let size = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.length;
+          if (size > MAX_MEMBER || totalOut + size > MAX_TOTAL) {
+            try { await reader.cancel(); } catch (_e) { /* already closing */ }
+            throw new Error('ZIP member "' + name + '" expands to an implausible size');
+          }
+          chunks.push(value);
+        }
+        body = new Uint8Array(size);
+        let at = 0;
+        for (const c of chunks) { body.set(c, at); at += c.length; }
       } else throw new Error('Unsupported ZIP compression method ' + method + ' for ' + name);
       totalOut += body.length;
       if (totalOut > MAX_TOTAL) throw new Error('ZIP archive expands to an implausible size');
       // Basename only: a member called ../../x must never be treated as a path.
-      out[name.replace(/^.*[\\/]/, '')] = dec.decode(body);
+      // Kept as RAW BYTES: the manifest hashes each member's stored bytes, and
+      // a UTF-8 decode/encode round trip is lossy for any non-text member
+      // (evidence.pdf, for one), so hashing the round trip would report a
+      // GENUINE bundle as tampered.
+      out[name.replace(/^.*[\\/]/, '')] = body;
       p += 46 + nameLen + extraLen + commentLen;
     }
     return out;
@@ -2117,11 +2516,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   // tool and render the JSON — on file:// that means digging the page out of
   // the USB stick again. So the whole window is the target.
   let veil = null;
+  let veilSeen = 0;
   const showVeil = () => {
+    veilSeen = Date.now();
     if (veil) return;
     veil = document.createElement('div');
     veil.id = 'dragveil';
     veil.textContent = 'Drop anywhere to check the file';
+    veil.setAttribute('aria-hidden', 'true');
+    veil.addEventListener('click', hideVeil);
     document.body.appendChild(veil);
   };
   const hideVeil = () => { if (veil) { veil.remove(); veil = null; } };
@@ -2129,7 +2532,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     e.preventDefault();
     showVeil();
   }));
+  /* dragleave alone leaves the veil stuck if the user drops outside the
+     window: no drop event ever fires, and a fixed full-screen overlay with no
+     way out means reloading from the USB stick. Belt, braces and a watchdog. */
   window.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) hideVeil(); });
+  window.addEventListener('dragend', hideVeil);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideVeil(); });
+  setInterval(() => {
+    if (veil && Date.now() - veilSeen > 1200) hideVeil();
+  }, 600);
   window.addEventListener('drop', (e) => {
     e.preventDefault();
     hideVeil();
