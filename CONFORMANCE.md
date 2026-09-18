@@ -82,6 +82,20 @@ Each mutation below must move the verdict away from `verified`. The reference su
 | Pin a `--expected-key-id` that isn't the signer | `key_unknown` | expected-key-id anchor cases |
 | Relabel a signed SBOM/VEX with the pack context (or vice-versa) | `tampered` | cross-context replay cases (§12) |
 | Swap a member inside a `.zip` pack so its hash no longer matches `manifest.json` | `tampered` | zip-manifest cases |
+| Replace any field with a value of the **wrong JSON type** (`{}`, `[]`, a number, a boolean, `null`) | `tampered` — **never a crash** | type-substitution cases |
+
+**On wrong-typed fields.** Every field in this format is declared somewhere as a string, a
+number, a boolean or a container, and handing a verifier an object where a string belongs is
+the cheapest hostile input there is. It had no row here until the implementations were
+actually compared on it — and they disagreed, one reporting `tampered` and one exiting with
+an unhandled traceback. A conformant verifier MUST report a verdict for such an artifact and
+MUST NOT raise: an exception is not one of the four values in the vocabulary above, and for
+an auditor *"could not be read"* and *"this was altered"* are very different statements.
+
+`verifier-web/differential.mjs` enforces this by substituting `{}`, `[]`, `0`, `true` and
+`null` at **every path** — containers as well as leaves, since `x || []` guards against a
+field being absent and never against it being the wrong type — and by failing the run
+outright when a verifier throws, rather than recording the throw as if it were a verdict.
 
 ## Canonical-JSON rule a reimplementation MUST reproduce
 

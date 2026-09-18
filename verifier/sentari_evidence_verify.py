@@ -556,15 +556,27 @@ def verify_pack(
             expected_key_id=expected_key_id,
         )
 
+    # A signature block that is present but is NOT an object (an int, a list)
+    # is a malformed artifact, not an unreadable one: every later .get() would
+    # raise. Normalise it to an empty block so the checks below run and produce
+    # `tampered`, matching how every other wrong-typed field is treated.
+    if not isinstance(signature, dict):
+        signature = {}
+
     r = Result()
 
     # Layer 1 — payload intact
     stored = payload.get("content_sha256", "")
     recomputed = recompute_content_hash(payload)
-    r.payload_intact = bool(stored) and stored == recomputed
+    # isinstance, not bare truthiness: a content_sha256 that is not a string is
+    # a malformed artifact, and slicing it for the note below raises — which
+    # the top-level guard would turn into exit 4 while the browser verifier
+    # correctly reports `tampered`. A wrong-typed field is a VERDICT here too.
+    r.payload_intact = isinstance(stored, str) and bool(stored) and stored == recomputed
     if not r.payload_intact:
         r.notes.append(
-            f"content_sha256 mismatch: stored={stored[:12]}… recomputed={recomputed[:12]}…"
+            f"content_sha256 mismatch: stored={str(stored)[:12]}… "
+            f"recomputed={recomputed[:12]}…"
         )
 
     # The hashes the signature binds come from the pack's own signed columns.
@@ -588,7 +600,12 @@ def verify_pack(
     r.notes.extend(field_notes)
 
     # Layer 2 — frozen inputs (only if embedded; else None = not checkable offline)
-    if frozen_inputs is not None:
+    if frozen_inputs is not None and not isinstance(frozen_inputs, dict):
+        # Present but not a mapping (a list, a number): malformed, and an
+        # integrity failure — never an exception out of the verifier.
+        r.frozen_inputs_valid = False
+        r.notes.append("frozen_inputs is present but is not an object")
+    elif frozen_inputs is not None:
         ok, per_source = verify_frozen_inputs(frozen_inputs, frozen_sha256)
         r.frozen_inputs_valid = ok
         r.per_source = per_source

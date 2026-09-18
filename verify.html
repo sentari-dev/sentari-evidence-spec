@@ -949,6 +949,12 @@ const EvidenceCore = (() => {
   /** Unwrap a RawNumber for display; everything else passes through. */
   const plain = (v) => (v instanceof RawNumber ? v.raw : v);
 
+  /** A real JSON object: not null, not an array, and NOT a wrapped number.
+   *  `typeof x === 'object'` is true for a RawNumber, which made
+   *  `"signature": 0` look like a signature block. */
+  const isObj = (v) =>
+    v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof RawNumber);
+
   function codePointCompare(a, b) {
     // Array.from splits on code points, not UTF-16 units.
     const ca = Array.from(a), cb = Array.from(b);
@@ -962,6 +968,12 @@ const EvidenceCore = (() => {
 
   /** Thrown for content that cannot be canonicalised reproducibly. */
   class NotHashable extends Error {}
+
+  /** Thrown when the file is not a Sentari artifact at all, as distinct from
+   *  being a damaged or altered one. The reference verifier rejects these at
+   *  load time with exit 4 — "not a verdict about the artifact" — and this
+   *  keeps the two implementations saying the same thing about the same file. */
+  class NotAnArtifact extends Error {}
 
   function canonicalString(value) {
     if (value === null) return 'null';
@@ -1264,8 +1276,8 @@ const EvidenceCore = (() => {
     // Both shapes are accepted: the nested form and the flat server-download
     // form (payload fields at the top level, signature/frozen_inputs as
     // siblings). The signature is always OUTSIDE the hashed payload.
-    let payload, sig, frozen;
-    if (obj.payload && typeof obj.payload === 'object') {
+    let payload, sig, frozen;   // sig is normalised below
+    if (isObj(obj.payload)) {
       payload = obj.payload;
       sig = obj.signature;
       frozen = obj.frozen_inputs;
@@ -1298,9 +1310,18 @@ const EvidenceCore = (() => {
     r.payload_intact = recomputed === stored;
     if (!r.payload_intact) r.notes.push('payload content_sha256 does not recompute');
 
+    if (sig !== undefined && sig !== null && !isObj(sig)) {
+      // Present but not an object: malformed, not absent. Normalise so the
+      // field checks below run and reach `tampered`, exactly as the reference
+      // does, instead of returning early with a softer verdict.
+      sig = {};
+    }
     if (!sig || typeof sig !== 'object') {
-      r.notes.push('no detached signature block');
-      return r;
+      // ABSENT is different: an artifact with no signature block is not a
+      // signed pack at all. The reference rejects it at load time as
+      // unreadable (exit 4, "not a verdict about the artifact"), so this does
+      // the same rather than inventing a verdict for a non-artifact.
+      throw new NotAnArtifact('no signature block found in this file');
     }
 
     // --- Detached-block metadata must agree with the hash-verified payload ---
@@ -1315,8 +1336,15 @@ const EvidenceCore = (() => {
       r.notes.push('frozen_inputs not embedded in this artifact — Layer 2 not checkable offline');
     }
 
+    // `stored`, not sig.content_sha256: the envelope must be bound to the
+    // payload's OWN hash, which Layer 1 has already proved, not to a value
+    // the attacker supplies in the detached block. The reference verifier does
+    // exactly this, and binding to the block instead made a genuinely signed
+    // pack whose block omits content_sha256 read as tampered here while both
+    // CLIs said verified. The block's copy stays an advisory cross-check in
+    // checkSigFields.
     checkSignature(
-      r, sig, sig.content_sha256, sig.context || PACK_CTX,
+      r, sig, stored, sig.context || PACK_CTX,
       sig.frozen_inputs_sha256 === undefined ? null : sig.frozen_inputs_sha256,
       anchor
     );
@@ -1335,7 +1363,15 @@ const EvidenceCore = (() => {
     // The {document,signature} wrapper is recognised BEFORE any flat-pack
     // fallback, and an unknown ctx is rejected outright rather than silently
     // accepted (spec §12.6 step 4).
-    if (obj.document !== undefined && obj.signature && typeof obj.signature === 'object') {
+    if (obj.document !== undefined) {
+      // A wrapper carrying a document but no usable signature block is not a
+      // signed artifact at all. The reference rejects exactly this at load
+      // time ("artifact has a 'document' but no 'signature' block"), so this
+      // rejects it too rather than falling through to the pack path and
+      // inventing a verdict the other implementations do not give.
+      if (!isObj(obj.signature)) {
+        throw new NotAnArtifact("this file has a 'document' but no signature block");
+      }
       const ctx = obj.signature.context;
       if (own(ARTIFACT_CTX, ctx)) return verifyDocument(obj, anchor);
       const r = newResult();
@@ -1358,7 +1394,7 @@ const EvidenceCore = (() => {
     // primitives (exported for the conformance harness and for review)
     sha256, sha256Hex, sha512, toHex, ed25519Verify,
     canonicalJson, canonicalString, canonicalSha256Hex, codePointCompare,
-    NotHashable, b64ToBytes, RawNumber, parseJson, plain,
+    NotHashable, NotAnArtifact, b64ToBytes, RawNumber, parseJson, plain, isObj,
     // verification
     newResult, verdictOf, verifyJson, verifyPack, verifyDocument,
     checkFrozenInputs, checkSignature,
@@ -1405,6 +1441,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
      "could not be read" for a file the core already judged TAMPERED. A hostile
      artifact must never get to choose which of those two it is called.
      Use str() for values and esc() for anything reaching the DOM. */
+  /* The sibling of str(), and the same lesson a third time: `x || []` guards
+     against a field being ABSENT, never against it being the wrong TYPE. One
+     character -- "controls": [] to {} -- and .forEach is not a function. */
+  const arr = (v) => (Array.isArray(v) ? v : []);
+
   const str = (v) => {
     if (typeof v === 'string') return v;
     if (v === undefined || v === null) return '';
@@ -1842,7 +1883,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       '<span class="ctrl-act a-' + esc(st) + '">' + esc(pick(STATUS_ACTION, st, '')) +
       '</span></summary><div class="body">';
     h += '<p class="ctrl-sum">' + esc(c.summary) + '</p>';
-    const findings = c.findings || [];
+    const findings = arr(c.findings);
     if (findings.length) {
       const seen = new Map();
       findings.forEach((f) => seen.set(f, (seen.get(f) || 0) + 1));
@@ -1861,7 +1902,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   }
 
   function renderRefs(c) {
-    const refs = c.evidence_refs || [];
+    const refs = arr(c.evidence_refs);
     if (!refs.length) {
       return '<p class="norefs">No supporting records are referenced for this control.</p>';
     }
@@ -1878,8 +1919,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
   /* ---- the assessment --------------------------------------------------- */
   function renderPack(payload) {
-    const controls = payload.controls || [];
-    const coverage = payload.coverage || {};
+    const controls = arr(payload.controls).filter((c) => c && typeof c === 'object');
+    const coverage = (payload.coverage && typeof payload.coverage === 'object')
+      ? payload.coverage : {};
     const counts = Object.create(null);
     controls.forEach((c) => {
       const k = safeStatus(c.status);
@@ -1992,7 +2034,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       h += section('compliant', 'Evidenced compliant', ok.length, 'compliant',
         ok.map((c) => controlBlock(c, graded, anyPrio)).join(''));
     }
-    const gaps = coverage.not_assessed_framework_refs || [];
+    const gaps = arr(coverage.not_assessed_framework_refs);
     if (gaps.length) {
       h += section('gaps', 'Outside this pack', gaps.length, '',
         '<div class="card"><ul>' + gaps.map((x) => '<li>' + esc(x) + '</li>').join('') +
@@ -2022,7 +2064,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   function renderFrozen(frozen, r) {
     if (!frozen || typeof frozen !== 'object') return '';
     const sources = frozen.sources || {};
-    const names = Object.keys(sources).sort();
+    const names = (sources && typeof sources === 'object') ? Object.keys(sources).sort() : [];
     if (!names.length) return '';
     const total = names.reduce((n, k) => n + ((sources[k] && sources[k].rows) || []).length, 0);
 
@@ -2129,8 +2171,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
 
   function renderDocument(obj, r) {
     const doc = obj.document || {};
-    const comps = doc.components || [];
-    const stmts = doc.statements || doc.vulnerabilities || [];
+    const comps = arr(doc.components);
+    const stmts = arr(doc.statements || doc.vulnerabilities);
     const kind = r.kind === 'SBOM' ? 'Software bill of materials' : 'Vulnerability statement';
     let h = '<h1 class="doc-title">' + esc(kind) + '</h1>';
     h += '<p class="doc-meta">Signed ' + esc(r.kind) + ' export &middot; ' +
@@ -2225,6 +2267,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     $('busy').classList.add('hidden');
     $('parse-error').classList.add('hidden');
     $('results').classList.remove('hidden');
+    // Never let the previous file's identity block survive into this one: the
+    // screen would show THIS verdict while the printout was headed with the
+    // LAST file's framework, pack id, content hash and result.
+    $('print-head').innerHTML = '';
     $('intro').classList.add('hidden');
     $('filebar').classList.remove('hidden');
     $('filename').textContent = fileName || 'the file you opened';
@@ -2250,6 +2296,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       $('report').innerHTML = '';
     }
     } catch (e) {
+      $('print-head').innerHTML = '';
       $('report').innerHTML = '<div class="card"><h2>The contents could not be ' +
         'displayed.</h2><p class="prose">The verification result above still ' +
         'stands \u2014 it was computed before this point. This file contains a ' +
@@ -2257,11 +2304,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
         'with suspicion.</p><details><summary class="sub">Technical detail' +
         '</summary><p class="mono" style="margin:8px 0 0">' +
         esc(e && e.message) + '</p></details></div>';
+      announce('The file was checked, but its contents could not be displayed.');
     }
     // A polite live region wrapping the whole report would read the entire
     // document aloud -- title, every tile, all sixty index chips, every row.
     // One sentence, and focus moved to the verdict.
-    announce(summarise(r, obj));
+    // INSIDE its own guard: this threw on a container type-swap, fail() then
+    // hid #results, and the verdict the core had correctly computed was wiped
+    // off the screen.
+    try { announce(summarise(r, obj)); } catch (_e) { /* verdict already shown */ }
     const h = document.getElementById('verdict-head');
     if (h) h.focus();
   }
@@ -2283,7 +2334,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
     else head = 'Unaltered since signing; signer not yet confirmed.';
     if (r.kind !== 'pack') return head;
     const payload = (obj.payload && typeof obj.payload === 'object') ? obj.payload : obj;
-    const cs = (payload.controls || []);
+    const cs = arr(payload.controls).filter((c) => c && typeof c === 'object');
     const bad = cs.filter((c) => safeStatus(c.status) === 'non_compliant').length;
     const risk = cs.filter((c) => safeStatus(c.status) === 'at_risk').length;
     return head + ' ' + cs.length + ' controls assessed, ' + bad + ' non-compliant, ' +
@@ -2458,7 +2509,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
   function verifyObject(obj, extras, fileName) {
     try {
       show(obj, C.verifyJson(obj, currentAnchor || null, extras || {}), extras, null, fileName);
-    } catch (e) { fail(e.message, 'notpack'); }
+    } catch (e) {
+      fail(e.message, e instanceof C.NotAnArtifact ? 'notpack' : 'notpack');
+    }
   }
 
   async function handleFiles(files) {
@@ -2476,7 +2529,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       let picked = 0;
       let bytesRead = 0;
       for (const f of files) {
-        if (/\.zip$/i.test(f.name)) { zip = f; continue; }
+        if (/\.zip$/i.test(f.name)) {
+          // MAX_TOTAL/MAX_MEMBER bound the DECOMPRESSED output; without this
+          // the compressed input is unbounded and a multi-gigabyte archive is
+          // materialised whole by arrayBuffer().
+          if (f.size > MAX_TOTAL) throw new Error('That archive is implausibly large');
+          zip = f;
+          continue;
+        }
         if (++picked > MAX_MEMBERS) throw new Error('Too many files selected');
         if (f.size > MAX_MEMBER) throw new Error('"' + f.name + '" is implausibly large');
         bytesRead += f.size;
@@ -2576,7 +2636,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EvidenceCo
       r.notes.push('the bundle’s file list carries no usable public key, so it ' +
         'is not signed — the set of files could not be trusted');
     }
-    const files = (man.payload && man.payload.files) || [];
+    const files = arr(man.payload && man.payload.files);
     for (const entry of files) {
       const nm = str(entry && entry.name);
       const body = nm ? members[nm] : undefined;

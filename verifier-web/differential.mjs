@@ -55,11 +55,15 @@ function jsVerdict(obj, anchor, label) {
     // Round-trip through text so the JS side parses exactly what Python read.
     return C.verdictOf(C.verifyJson(C.parseJson(JSON.stringify(obj)), anchor || null));
   } catch (e) {
-    // NOT collapsed to a verdict. The core's contract is that a corrupt
-    // artifact produces verified/tampered/key_unknown -- never an exception.
-    // Mapping a throw to 'error' here (and Python's exit 4 to 'error' too)
-    // meant a crash on BOTH sides was scored as agreement, which is how a
-    // whole class of type-coercion bugs survived a green run.
+    // NotAnArtifact is a deliberate REJECTION, not a crash: the file is not a
+    // Sentari artifact at all, which the reference reports as exit 4. Scored
+    // as 'error' so the two implementations can be compared on it.
+    if (e instanceof C.NotAnArtifact) return 'error';
+    // Anything else is NOT collapsed to a verdict. The core's contract is that
+    // a corrupt artifact produces verified/tampered/key_unknown -- never an
+    // exception. Mapping a throw to 'error' here (and Python's exit 4 to
+    // 'error' too) meant a crash on BOTH sides scored as agreement, which is
+    // how a whole class of type-coercion bugs survived a green run.
     jsThrew.push((label || '?') + ': ' + e.message);
     return 'THREW: ' + e.message;
   }
@@ -72,9 +76,17 @@ const VECTORS = [
   'verifier-web/fixtures/pack-with-frozen-inputs.fixture.json',
 ];
 
-/** Every leaf path in the object, as arrays of keys. */
+/**
+ * Every path in the object — leaves AND interior nodes.
+ *
+ * A leaf-only walk cannot express the bug class that actually bit: replacing a
+ * CONTAINER, so `"controls": []` becomes `"controls": {}` and `.forEach is not
+ * a function`. `x || []` guards against a field being absent, never against it
+ * being the wrong type, so containers have to be mutated too.
+ */
 function paths(obj, base = [], out = []) {
-  if (obj === null || typeof obj !== 'object') { out.push(base); return out; }
+  if (base.length) out.push(base);          // the node itself, not just its leaves
+  if (obj === null || typeof obj !== 'object') return out;
   if (Array.isArray(obj)) {
     obj.forEach((v, i) => paths(v, base.concat(String(i)), out));
     return out;
@@ -102,10 +114,11 @@ const disagreements = [];
 
 for (const rel of VECTORS) {
   const original = JSON.parse(readFileSync(join(REPO, rel), 'utf8'));
-  const all = paths(original);
-  // Sample across the whole artifact rather than only the first fields.
-  const step = Math.max(1, Math.floor(all.length / 20));
-  const sample = all.filter((_, i) => i % step === 0).slice(0, 20);
+  // EVERY path. Sampling is what hid a real JS/Python disagreement in the
+  // signature block: 20 leaves out of 328 covered none of key_id, context,
+  // content_sha256, frozen_inputs_sha256, algorithm, public_key or value.
+  // Full enumeration costs a couple of minutes; it is a pre-merge gate.
+  const sample = paths(original);
 
   const cases = [];
   // Untouched, plus a wrong pin.
@@ -115,16 +128,17 @@ for (const rel of VECTORS) {
 
   for (const p of sample) {
     const v = getIn(original, p);
-    // mutate within type
+    // mutate within type (leaves only — a container has no "next value")
     let mutated;
     if (typeof v === 'string') mutated = v + 'X';
     else if (typeof v === 'number') mutated = v + 1;
     else if (typeof v === 'boolean') mutated = !v;
     else if (v === null) mutated = 'null-replaced';
-    else continue;
-    const m = JSON.parse(JSON.stringify(original));
-    setIn(m, p, mutated);
-    cases.push(['mutate:' + p.join('.'), m, null]);
+    if (mutated !== undefined) {
+      const m = JSON.parse(JSON.stringify(original));
+      setIn(m, p, mutated);
+      cases.push(['mutate:' + p.join('.'), m, null]);
+    }
 
     // ...and substitute the TYPE. Every field is declared to be a string, a
     // number or a boolean somewhere in the spec; handing the verifier an

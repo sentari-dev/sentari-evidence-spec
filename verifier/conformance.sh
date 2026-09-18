@@ -94,6 +94,22 @@ fi
 # verify.html is handed around as a standalone file (emailed, copied to a USB
 # stick), so its own SHA-256 is published alongside it. Checking it here means
 # the recorded value can never silently drift from the shipped page.
+# The render layer is not reached by any of the checks above, and two real
+# defects lived there: a container type-swap that erased the verdict from the
+# screen after it had been rendered, and a printed identity block that
+# survived into the next file. Asserts the END STATE, not just "nothing threw".
+echo "# render layer (verify.html, via node)"
+if command -v node >/dev/null 2>&1; then
+  if node "$REPO/verifier-web/render-test.mjs" >/dev/null 2>&1; then
+    pass=$((pass + 1)); printf '  PASS  render  verdict survives every hostile field\n'
+  else
+    fail=$((fail + 1)); printf '  FAIL  render  a hostile field breaks the report\n'
+    printf '        re-run for detail: node verifier-web/render-test.mjs\n'
+  fi
+else
+  fail=$((fail + 1)); printf '  FAIL  render  node not found\n'
+fi
+
 echo "# published self-hash (verify.html.sha256)"
 if [ -f "$REPO/verify.html.sha256" ]; then
   if ( cd "$REPO" && shasum -a 256 -c verify.html.sha256 >/dev/null 2>&1 ); then
